@@ -100,7 +100,7 @@ uint32_t kernel_len = 0;
 struct file_info rootfs_info;
 uint32_t rootfs_ofs = 0;
 uint32_t rootfs_align;
-static struct file_info boot_info;
+static struct file_info boot_info = { 0 };
 int combined;
 int strip_padding;
 int add_jffs2_eof;
@@ -196,6 +196,7 @@ static void usage(int status)
 "  -F <id>         use flash layout specified with <id>\n"
 "  -k <file>       read kernel image from the file <file>\n"
 "  -r <file>       read rootfs image from the file <file>\n"
+"  -b <file>       read bootloader image from the file <file>\n"
 "  -a <align>      align the rootfs start on an <align> bytes boundary\n"
 "  -R <offset>     overwrite rootfs offset with <offset> (hexval prefixed with 0x)\n"
 "  -o <file>       write output to the file <file>\n"
@@ -264,11 +265,23 @@ static int check_options(void)
 	if (!rootfs_ofs)
 		rootfs_ofs = layout->rootfs_ofs;
 
+	/* check bootloader */
+	ret = get_file_stat(&boot_info);
+	if (ret) {
+		ERR("Can not load bootloader image.");
+		return ret;
+	}
+
+	if (boot_info.file_size > 2 * 64 * 1024) {
+		/* the offset in fill_header is hardcoded to 128k */
+		ERR("Bootloader image is bigger than 128k.");
+		return -1;
+	}
+
 	if (kernel_info.file_name == NULL) {
 		ERR("no kernel image specified");
 		return -1;
 	}
-
 	ret = get_file_stat(&kernel_info);
 	if (ret)
 		return ret;
@@ -338,10 +351,20 @@ static int check_options(void)
 	return 0;
 }
 
-void fill_header(char *buf, int len)
+void fill_header_bootloader(char *buf, int len, int with_bootloader)
 {
 	struct fw_header *hdr = (struct fw_header *)buf;
 	unsigned ver_len;
+	unsigned int offset = 0;
+
+	if (with_bootloader) {
+		/* ensure the bootloader is padded to 64k */
+		offset = boot_info.file_size & (64 * 1024);
+		if (offset < boot_info.file_size)
+			offset += 64 * 1024;
+
+		offset += sizeof(struct fw_header);
+	}
 
 	memset(hdr, '\xff', sizeof(struct fw_header));
 
@@ -357,28 +380,28 @@ void fill_header(char *buf, int len)
 	hdr->hw_rev = htonl(board->hw_rev);
 	hdr->hw_ver_add = htonl(board->hw_ver_add);
 
-	if (boot_info.file_size == 0) {
+	if (boot_info.file_size == 0 || !with_bootloader) {
 		memcpy(hdr->md5sum1, md5salt_normal, sizeof(hdr->md5sum1));
 		hdr->boot_ofs = htonl(0);
 		hdr->boot_len = htonl(0);
 	} else {
 		memcpy(hdr->md5sum1, md5salt_boot, sizeof(hdr->md5sum1));
-		hdr->boot_ofs = htonl(rootfs_ofs + rootfs_info.file_size);
-		hdr->boot_len = htonl(rootfs_info.file_size);
+		hdr->boot_ofs = htonl(0);
+		hdr->boot_len = htonl(boot_info.file_size);
 	}
 
 	hdr->kernel_la = htonl(kernel_la);
 	hdr->kernel_ep = htonl(kernel_ep);
-	hdr->fw_length = htonl(layout->fw_max_len);
-	hdr->kernel_ofs = htonl(sizeof(struct fw_header));
+	hdr->fw_length = htonl(layout->fw_max_len + offset);
+	hdr->kernel_ofs = htonl(sizeof(struct fw_header) + offset);
 	hdr->kernel_len = htonl(kernel_len);
 	if (!combined) {
+		/* even the bootloader doesnt increased the root_ofs. Unsure if this parser
+		 * always ignores the rootfs or only in the 841v13
+		 */
 		hdr->rootfs_ofs = htonl(rootfs_ofs);
 		hdr->rootfs_len = htonl(rootfs_info.file_size);
 	}
-
-	hdr->boot_ofs = htonl(0);
-	hdr->boot_len = htonl(boot_info.file_size);
 
 	hdr->unk2 = htonl(0);
 	hdr->unk3 = htonl(0xffffffff);
@@ -398,6 +421,11 @@ void fill_header(char *buf, int len)
 	}
 
 	get_md5(buf, len, hdr->md5sum1);
+}
+
+/* fill_header get called by mktplinkfw_lib to fill the header in front of the kernel. */
+void fill_header(char *buf, int len) {
+	fill_header_bootloader(buf, len, 0);
 }
 
 static int inspect_fw(void)
@@ -561,6 +589,75 @@ static int inspect_fw(void)
 	return ret;
 }
 
+/* prepend a second image header and the bootloader.
+ *
+ * |------------|
+ * |image header|
+ * |------------|
+ * |bootloader  |
+ * |------------|
+ * |optional pad|
+ * |------------|
+ * |image header|
+ * |------------|
+ * |kernel image|
+ * |------------|
+ * |rootfs image|
+ * |------------|
+ *
+ * The padding is optional. The second image header should begin a 64k boundary.
+ */
+int prepend_bootloader() {
+	unsigned int buflen = 0;
+	int ret = 0, bootloader_padded = 0;
+	char *buf = 0, *p = 0;
+	struct file_info image;
+
+	/* calculate blocks to ensure padding */
+	bootloader_padded = boot_info.file_size & (64 * 1024);
+	if (bootloader_padded < boot_info.file_size)
+		bootloader_padded += 64 * 1024;
+
+	image.file_name = ofname;
+	ret = get_file_stat(&image);
+	if (ret) {
+		ERR("Can not load the output image");
+		return ret;
+	}
+
+	buflen = image.file_size + bootloader_padded + sizeof(struct fw_header);
+	buf = malloc(buflen);
+	if (buf == NULL) {
+		ERR("Can not allocate buffer %d bytes", buflen);
+		return -1;
+	}
+	memset(buf, 0xff, buflen);
+
+	/* load old image */
+	p = buf + bootloader_padded + sizeof(struct fw_header);
+	ret = read_to_buf(&image, p);
+	if (ret) {
+		ERR("Can not read output image");
+		goto out_free_buf;
+	}
+
+	p = buf + sizeof(struct fw_header);
+	ret = read_to_buf(&boot_info, p);
+
+	fill_header_bootloader(buf, buflen, 1);
+
+	ret = write_fw(ofname, buf, buflen);
+	if (ret)
+		goto out_free_buf;
+
+	ret = EXIT_SUCCESS;
+
+out_free_buf:
+	free(buf);
+
+	return ret;
+}
+
 int main(int argc, char *argv[])
 {
 	int ret = EXIT_FAILURE;
@@ -570,13 +667,16 @@ int main(int argc, char *argv[])
 	while ( 1 ) {
 		int c;
 
-		c = getopt(argc, argv, "a:H:E:F:L:V:N:W:w:ci:k:r:R:o:xhsjv:y:T:e");
+		c = getopt(argc, argv, "a:b:H:E:F:L:V:N:W:w:ci:k:r:R:o:xhsjv:y:T:e");
 		if (c == -1)
 			break;
 
 		switch (c) {
 		case 'a':
 			sscanf(optarg, "0x%x", &rootfs_align);
+			break;
+		case 'b':
+			boot_info.file_name = optarg;
 			break;
 		case 'H':
 			opt_hw_id = optarg;
@@ -654,12 +754,14 @@ int main(int argc, char *argv[])
 	if (ret)
 		goto out;
 
-	if (!inspect_info.file_name)
+	if (!inspect_info.file_name) {
 		ret = build_fw(sizeof(struct fw_header));
+		if (ret == 0 && boot_info.file_size > 0)
+			ret = prepend_bootloader();
+	}
 	else
 		ret = inspect_fw();
 
  out:
 	return ret;
 }
-
