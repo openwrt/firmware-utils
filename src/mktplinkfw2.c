@@ -218,6 +218,7 @@ static void usage(int status)
 static int check_options(void)
 {
 	int ret;
+	int exceed_bytes;
 
 	if (inspect_info.file_name) {
 		ret = get_file_stat(&inspect_info);
@@ -311,21 +312,24 @@ static int check_options(void)
 
 			DBG("rootfs offset aligned to 0x%u", rootfs_ofs);
 
-			if (kernel_len + rootfs_info.file_size >
-			    layout->fw_max_len - sizeof(struct fw_header)) {
-				ERR("images are too big");
+			exceed_bytes = (kernel_len + rootfs_info.file_size) -
+				(layout->fw_max_len - sizeof(struct fw_header));
+			if (exceed_bytes > 0) {
+				ERR("images are too big by %i bytes", exceed_bytes);
 				return -1;
 			}
 		} else {
-			if (kernel_info.file_size >
-			    rootfs_ofs - sizeof(struct fw_header)) {
-				ERR("kernel image is too big");
+			exceed_bytes = kernel_info.file_size -
+				(rootfs_ofs - sizeof(struct fw_header));
+			if (exceed_bytes > 0) {
+				ERR("images are too big by %i bytes", exceed_bytes);
 				return -1;
 			}
 
-			if (rootfs_info.file_size >
-			    (layout->fw_max_len - rootfs_ofs)) {
-				ERR("rootfs image is too big");
+			exceed_bytes = rootfs_info.file_size -
+				(layout->fw_max_len - rootfs_ofs);
+			if (exceed_bytes > 0) {
+				ERR("images are too big by %i bytes", exceed_bytes);
 				return -1;
 			}
 		}
