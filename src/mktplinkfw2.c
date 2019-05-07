@@ -207,7 +207,7 @@ static void usage(int status)
 "  -v <version>    set firmware version to <version>\n"
 "  -y <version>    set secondary version to <version>\n"
 "  -i <file>       inspect given firmware file <file>\n"
-"  -x              extract kernel and rootfs while inspecting (requires -i)\n"
+"  -x              extract bootloader, kernel and rootfs while inspecting (requires -i)\n"
 "  -h              show this screen\n"
 	);
 
@@ -506,6 +506,23 @@ static int inspect_fw(void)
 		char *filename;
 
 		printf("\n");
+
+		if (hdr->boot_len) {
+			filename = malloc(strlen(inspect_info.file_name) + 8);
+			sprintf(filename, "%s-bootloader", inspect_info.file_name);
+			printf("Extracting bootloader to \"%s\"...\n", filename);
+			fp = fopen(filename, "w");
+			if (fp)	{
+				if (!fwrite(buf + sizeof(struct fw_header) + ntohl(hdr->boot_ofs),
+					ntohl(hdr->boot_len), 1, fp)) {
+					ERR("error in fwrite(): %s", strerror(errno));
+				}
+				fclose(fp);
+			} else {
+				ERR("error in fopen(): %s", strerror(errno));
+			}
+			free(filename);
+		}
 
 		filename = malloc(strlen(inspect_info.file_name) + 8);
 		sprintf(filename, "%s-kernel", inspect_info.file_name);
