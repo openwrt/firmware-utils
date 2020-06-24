@@ -44,7 +44,7 @@
 		_a > _b ? _a : _b;		\
 	})
 
-#define MAX_SUPPORTED_VERSION			2
+#define MAX_SUPPORTED_VERSION			3
 
 #define LXL_FLAGS_VENDOR_LUXUL			0x00000001
 
@@ -60,6 +60,17 @@ struct lxl_hdr {
 	/* Version: 2+ */
 	uint8_t		release[4];
 	uint8_t		v2_end[0];
+	/* Version: 3+ */
+	uint32_t	blobs_offset;
+	uint32_t	blobs_len;
+	uint8_t		v3_end[0];
+} __attribute__((packed));
+
+struct lxl_blob {
+	char		magic[2];	/* "D#" */
+	uint16_t	type;
+	uint32_t	len;
+	uint8_t		data[0];
 } __attribute__((packed));
 
 /**************************************************
@@ -75,6 +86,8 @@ static uint32_t lxlfw_hdr_len(uint32_t version)
 		return offsetof(struct lxl_hdr, v1_end);
 	case 2:
 		return offsetof(struct lxl_hdr, v2_end);
+	case 3:
+		return offsetof(struct lxl_hdr, v3_end);
 	default:
 		fprintf(stderr, "Unsupported version %d\n", version);
 		return 0;
@@ -92,6 +105,7 @@ static FILE *lxlfw_open(const char *pathname, struct lxl_hdr *hdr)
 	size_t v0_len = lxlfw_hdr_len(0);
 	size_t min_hdr_len;
 	uint32_t version;
+	uint32_t hdr_len;
 	size_t bytes;
 	FILE *lxl;
 
@@ -120,6 +134,22 @@ static FILE *lxlfw_open(const char *pathname, struct lxl_hdr *hdr)
 	if (bytes != min_hdr_len - v0_len) {
 		fprintf(stderr, "Input file too small for header version %d\n", version);
 		goto err_close;
+	}
+
+	hdr_len = le32_to_cpu(hdr->hdr_len);
+
+	if (hdr_len < min_hdr_len) {
+		fprintf(stderr, "Header length mismatch: 0x%x (expected: 0x%zx)\n", hdr_len, min_hdr_len);
+		goto err_close;
+	}
+
+	if (version >= 3 && hdr->blobs_offset && hdr->blobs_len) {
+		uint32_t blobs_end = le32_to_cpu(hdr->blobs_offset) + le32_to_cpu(hdr->blobs_len);
+
+		if (blobs_end > hdr_len) {
+			fprintf(stderr, "Blobs section ends beyond header end: 0x%x (max: 0x%x)\n", blobs_end, hdr_len);
+			goto err_close;
+		}
 	}
 
 	return lxl;
@@ -167,6 +197,59 @@ static ssize_t lxlfw_copy_data(FILE *from, FILE *to, size_t size)
 
 	return ret;
 }
+
+/**
+ * lxlfw_write_blob - read data from external file and write blob to stream
+ *
+ * @lxl: stream to write to
+ * @type: blob type
+ * @pathname: external file pathname to read blob data from
+ */
+#if 0
+static ssize_t lxlfw_write_blob(FILE *lxl, uint16_t type, const char *pathname)
+{
+	struct lxl_blob blob = {
+		.magic = { 'D', '#' },
+		.type = cpu_to_le16(type),
+	};
+	char buf[512];
+	size_t blob_data_len;
+	size_t bytes;
+	FILE *data;
+
+	data = fopen(pathname, "r");
+	if (!data) {
+		fprintf(stderr, "Could not open input file %s\n", pathname);
+		return -EIO;
+	}
+
+	blob_data_len = 0;
+	fseek(lxl, sizeof(blob), SEEK_CUR);
+	while ((bytes = fread(buf, 1, sizeof(buf), data)) > 0) {
+		if (fwrite(buf, 1, bytes, lxl) != bytes) {
+			fprintf(stderr, "Could not copy %zu bytes from input file\n", bytes);
+			fclose(data);
+			return -EIO;
+		}
+		blob_data_len += bytes;
+	}
+
+	fclose(data);
+
+	blob.len = cpu_to_le32(blob_data_len);
+
+	fseek(lxl, -(blob_data_len + sizeof(blob)), SEEK_CUR);
+	bytes = fwrite(&blob, 1, sizeof(blob), lxl);
+	if (bytes != sizeof(blob)) {
+		fprintf(stderr, "Could not write Luxul's header\n");
+		return -EIO;
+	}
+
+	fseek(lxl, blob_data_len, SEEK_CUR);
+
+	return blob_data_len + sizeof(blob);
+}
+#endif
 
 /**************************************************
  * Info
@@ -216,6 +299,170 @@ static int lxlfw_info(int argc, char **argv) {
 		}
 		printf("\n");
 	}
+	if (version >= 3) {
+		printf("Blobs offset:\t%d\n", le32_to_cpu(hdr.blobs_offset));
+		printf("Blobs length:\t%d\n", le32_to_cpu(hdr.blobs_len));
+	}
+
+	if (version >= 3 && hdr.blobs_offset) {
+		size_t offset;
+
+		fseek(lxl, le32_to_cpu(hdr.blobs_offset), SEEK_SET);
+		for (offset = 0; offset < le32_to_cpu(hdr.blobs_len); ) {
+			struct lxl_blob blob;
+			size_t bytes;
+			size_t len;
+
+			bytes = fread(&blob, 1, sizeof(blob), lxl);
+			if (bytes != sizeof(blob)) {
+				fprintf(stderr, "Failed to read blob section\n");
+				err = -ENXIO;
+				goto err_close;
+			}
+
+			len = le32_to_cpu(blob.len);
+
+			printf("\n");
+			printf("Blob\n");
+			printf("Magic:\t\t%s\n", blob.magic);
+			printf("Type:\t\t0x%04x\n", le16_to_cpu(blob.type));
+			printf("Length:\t\t%zu\n", len);
+
+			offset += sizeof(blob) + len;
+			fseek(lxl, len, SEEK_CUR);
+		}
+
+		if (offset != le32_to_cpu(hdr.blobs_len)) {
+			printf("\n");
+			fprintf(stderr, "Blobs size (0x%zx) doesn't match declared length (0x%x)\n", offset, le32_to_cpu(hdr.blobs_len));
+		}
+	}
+
+err_close:
+	fclose(lxl);
+out:
+	return err;
+}
+
+/**************************************************
+ * Blobs
+ **************************************************/
+
+/**
+ * lxlfw_blob_save - save blob data to external file
+ *
+ * @lxl: Luxul firmware FILE with position seeked to blob data
+ * @len: blob data length
+ * @path: external file pathname to write
+ */
+#if 0
+static int lxlfw_blob_save(FILE *lxl, size_t len, const char *path) {
+	char buf[256];
+	size_t bytes;
+	FILE *out;
+	int err = 0;
+
+	out = fopen(path, "w+");
+	if (!out) {
+		fprintf(stderr, "Could not open \"%s\" file\n", path);
+		err = -EIO;
+		goto err_out;
+	}
+
+	while (len && (bytes = fread(buf, 1, min(len, sizeof(buf)), lxl)) > 0) {
+		if (fwrite(buf, 1, bytes, out) != bytes) {
+			fprintf(stderr, "Could not copy %zu bytes from input file\n", bytes);
+			err = -EIO;
+			goto err_close_out;
+		}
+		len -= bytes;
+	}
+
+	if (len) {
+		fprintf(stderr, "Could not copy all signature\n");
+		err = -EIO;
+		goto err_close_out;
+	}
+
+err_close_out:
+	fclose(out);
+err_out:
+	return err;
+}
+#endif
+
+static int lxlfw_blobs(int argc, char **argv) {
+	struct lxl_hdr hdr;
+	uint32_t version;
+	size_t offset;
+	size_t bytes;
+	int err = 0;
+	FILE *lxl;
+	int c;
+
+	if (argc < 3) {
+		fprintf(stderr, "Missing <file> argument\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	optind = 3;
+	while ((c = getopt(argc, argv, "")) != -1) {
+	}
+
+	if (1) {
+		fprintf(stderr, "Missing info on blobs to extract\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	lxl = lxlfw_open(argv[2], &hdr);
+	if (!lxl) {
+		fprintf(stderr, "Failed to open \"%s\" Luxul firmware\n", argv[2]);
+		err = -ENOENT;
+		goto out;
+	}
+
+	version = le32_to_cpu(hdr.version);
+
+	if (version < 3 || !hdr.blobs_offset) {
+		fprintf(stderr, "File <file> doesn't contain any blobs\n");
+		err = -ENOENT;
+		goto err_close;
+	}
+
+	fseek(lxl, le32_to_cpu(hdr.blobs_offset), SEEK_SET);
+	for (offset = 0; offset < le32_to_cpu(hdr.blobs_len); ) {
+		struct lxl_blob blob;
+		size_t len;
+
+		bytes = fread(&blob, 1, sizeof(blob), lxl);
+		if (bytes != sizeof(blob)) {
+			fprintf(stderr, "Failed to read blob section\n");
+			err = -ENXIO;
+			goto err_close;
+		}
+		offset += bytes;
+
+		if (memcmp(blob.magic, "D#", 2)) {
+			fprintf(stderr, "Failed to parse blob section\n");
+			err = -ENXIO;
+			goto err_close;
+		}
+
+		len = le32_to_cpu(blob.len);
+
+		if (0) {
+			/* TODO */
+		} else {
+			fseek(lxl, len, SEEK_CUR);
+		}
+		if (err) {
+			fprintf(stderr, "Failed to save blob section\n");
+			goto err_close;
+		}
+		offset += len;
+	}
 
 err_close:
 	fclose(lxl);
@@ -233,9 +480,10 @@ static int lxlfw_create(int argc, char **argv) {
 	};
 	char *in_path = NULL;
 	uint32_t version = 0;
-	uint32_t hdr_len;
+	uint32_t hdr_raw_len;	/* Header length without blobs */
+	uint32_t hdr_len;	/* Header length with blobs */
+	uint32_t blobs_len;
 	ssize_t bytes;
-	char buf[512];
 	int err = 0;
 	FILE *lxl;
 	FILE *in;
@@ -272,13 +520,8 @@ static int lxlfw_create(int argc, char **argv) {
 		}
 	}
 
-	hdr.version = cpu_to_le32(version);
-	hdr_len = lxlfw_hdr_len(version);
-	if (!hdr_len) {
-		err = -EINVAL;
-		goto out;
-	}
-	hdr.hdr_len = cpu_to_le32(hdr_len);
+	hdr_raw_len = lxlfw_hdr_len(version);
+	hdr_len = hdr_raw_len;
 
 	if (!in_path) {
 		fprintf(stderr, "Missing input file argument\n");
@@ -300,13 +543,35 @@ static int lxlfw_create(int argc, char **argv) {
 		goto err_close_in;
 	}
 
-	bytes = fwrite(&hdr, 1, hdr_len, lxl);
-	if (bytes != hdr_len) {
+	/* Write blobs */
+
+	blobs_len = 0;
+
+	fseek(lxl, hdr_raw_len, SEEK_SET);
+	/* TODO */
+
+	if (blobs_len) {
+		hdr.blobs_offset = cpu_to_le32(hdr_raw_len);
+		hdr.blobs_len = cpu_to_le32(blobs_len);
+		hdr_len += blobs_len;
+	}
+
+	/* Write header */
+
+	hdr.version = cpu_to_le32(version);
+	hdr.hdr_len = cpu_to_le32(hdr_len);
+
+	fseek(lxl, 0, SEEK_SET);
+	bytes = fwrite(&hdr, 1, hdr_raw_len, lxl);
+	if (bytes != hdr_raw_len) {
 		fprintf(stderr, "Could not write Luxul's header\n");
 		err = -EIO;
 		goto err_close_lxl;
 	}
 
+	/* Write input data */
+
+	fseek(lxl, 0, SEEK_END);
 	bytes = lxlfw_copy_data(in, lxl, 0);
 	if (bytes < 0) {
 		fprintf(stderr, "Could not copy %zu bytes from input file\n", bytes);
@@ -323,6 +588,180 @@ out:
 }
 
 /**************************************************
+ * Insert
+ **************************************************/
+
+static int lxlfw_insert(int argc, char **argv) {
+	struct lxl_hdr hdr = { };
+	char *tmp_path = NULL;
+	uint32_t version = 0;
+	uint32_t hdr_raw_len;	/* Header length without blobs */
+	uint32_t hdr_len;	/* Header length with blobs */
+	uint32_t blobs_len;
+	ssize_t bytes;
+	char *path;
+	FILE *lxl;
+	FILE *tmp;
+	int fd;
+	int c;
+	int err = 0;
+
+	if (argc < 3) {
+		fprintf(stderr, "Missing <file> argument\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	optind = 3;
+	while ((c = getopt(argc, argv, "")) != -1) {
+	}
+
+	if (1) {
+		fprintf(stderr, "Missing info on blobs to insert\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	lxl = lxlfw_open(argv[2], &hdr);
+	if (!lxl) {
+		fprintf(stderr, "Failed to open \"%s\" Luxul firmware\n", argv[2]);
+		err = -ENOENT;
+		goto out;
+	}
+
+	version = le32_to_cpu(hdr.version);
+	if (version > MAX_SUPPORTED_VERSION) {
+		fprintf(stderr, "Unsupported <file> version %d\n", version);
+		err = -EIO;
+		goto err_close_lxl;
+	}
+
+	version = max(version, 3);
+
+	hdr_raw_len = lxlfw_hdr_len(version);
+	hdr_len = hdr_raw_len;
+
+	/* Temporary file */
+
+	path = strdup(argv[2]);
+	if (!path) {
+		err = -ENOMEM;
+		goto err_close_lxl;
+	}
+	asprintf(&tmp_path, "%s/lxlfwXXXXXX", dirname(path));
+	free(path);
+	if (!tmp_path) {
+		err = -ENOMEM;
+		goto err_close_lxl;
+	}
+
+	fd = mkstemp(tmp_path);
+	if (fd < 0) {
+		err = -errno;
+		fprintf(stderr, "Failed to open temporary file\n");
+		goto err_free_path;
+	}
+	tmp = fdopen(fd, "w+");
+
+	/* Blobs */
+
+	fseek(tmp, hdr_raw_len, SEEK_SET);
+	blobs_len = 0;
+
+	/* Copy old blobs */
+
+	if (hdr.blobs_offset) {
+		size_t offset;
+
+		fseek(lxl, le32_to_cpu(hdr.blobs_offset), SEEK_SET);
+		for (offset = 0; offset < le32_to_cpu(hdr.blobs_len); ) {
+			struct lxl_blob blob;
+			size_t len;
+
+			bytes = fread(&blob, 1, sizeof(blob), lxl);
+			if (bytes != sizeof(blob)) {
+				fprintf(stderr, "Failed to read blob section\n");
+				err = -ENXIO;
+				goto err_close_tmp;
+			}
+
+			len = le32_to_cpu(blob.len);
+
+			/* Don't copy blobs that have to be replaced */
+			if (0) {
+				/* TODO */
+			} else {
+				fseek(lxl, -sizeof(blob), SEEK_CUR);
+				bytes = lxlfw_copy_data(lxl, tmp, sizeof(blob) + len);
+				if (bytes != sizeof(blob) + len) {
+					fprintf(stderr, "Failed to copy original blob\n");
+					err = -EIO;
+					goto err_close_tmp;
+				}
+				blobs_len += sizeof(blob) + len;
+			}
+
+			offset += sizeof(blob) + len;
+		}
+	}
+
+	/* Write new blobs */
+
+	/* TODO */
+
+	hdr.blobs_offset = cpu_to_le32(hdr_raw_len);
+	hdr.blobs_len = cpu_to_le32(blobs_len);
+	hdr_len += blobs_len;
+
+	/* Write header */
+
+	hdr.version = cpu_to_le32(version);
+	hdr.hdr_len = cpu_to_le32(hdr_len);
+
+	fseek(tmp, 0, SEEK_SET);
+	bytes = fwrite(&hdr, 1, hdr_raw_len, tmp);
+	if (bytes != hdr_raw_len) {
+		fprintf(stderr, "Could not write Luxul's header\n");
+		err = -EIO;
+		goto err_close_tmp;
+	}
+
+	/* Write original data */
+
+	fseek(tmp, 0, SEEK_END);
+	bytes = lxlfw_copy_data(lxl, tmp, 0);
+	if (bytes < 0) {
+		fprintf(stderr, "Failed to copy original file\n");
+		err = -EIO;
+		goto err_close_tmp;
+	}
+
+	fclose(tmp);
+
+	fclose(lxl);
+
+	/* Replace original file */
+
+	if (rename(tmp_path, argv[2])) {
+		err = -errno;
+		fprintf(stderr, "Failed to rename %s: %d\n", tmp_path, err);
+		unlink(tmp_path);
+		goto out;
+	}
+
+	return 0;
+
+err_close_tmp:
+	fclose(tmp);
+err_free_path:
+	free(tmp_path);
+err_close_lxl:
+	fclose(lxl);
+out:
+	return err;
+}
+
+/**************************************************
  * Start
  **************************************************/
 
@@ -332,20 +771,30 @@ static void usage() {
 	printf("Get info about Luxul firmware:\n");
 	printf("\tlxlfw info <file>\n");
 	printf("\n");
+	printf("Extract blobs from Luxul firmware:\n");
+	printf("\tlxlfw blobs <file> [options]\n");
+	printf("\n");
 	printf("Create new Luxul firmware:\n");
 	printf("\tlxlfw create <file> [options]\n");
 	printf("\t-i file\t\t\t\tinput file for Luxul's firmware container\n");
 	printf("\t-l\t\t\t\tmark firmware as created by Luxul company (DON'T USE)\n");
 	printf("\t-b board\t\t\tboard (device) name\n");
 	printf("\t-r release\t\t\trelease number (e.g. 5.1.0, 7.1.0.2)\n");
+	printf("\n");
+	printf("Insert blob to Luxul firmware:\n");
+	printf("\tlxlfw insert <file> [options]\n");
 }
 
 int main(int argc, char **argv) {
 	if (argc > 1) {
 		if (!strcmp(argv[1], "info"))
 			return lxlfw_info(argc, argv);
+		else if (!strcmp(argv[1], "blobs"))
+			return lxlfw_blobs(argc, argv);
 		else if (!strcmp(argv[1], "create"))
 			return lxlfw_create(argc, argv);
+		else if (!strcmp(argv[1], "insert"))
+			return lxlfw_insert(argc, argv);
 	}
 
 	usage();
