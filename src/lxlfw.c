@@ -60,7 +60,7 @@ struct lxl_hdr {
 	/* Version: 2+ */
 	uint8_t		release[4];
 	uint8_t		v2_end[0];
-} __packed;
+} __attribute__((packed));
 
 /**************************************************
  * Helpers
