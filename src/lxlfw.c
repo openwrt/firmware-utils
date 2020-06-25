@@ -44,6 +44,8 @@
 		_a > _b ? _a : _b;		\
 	})
 
+#define MAX_SUPPORTED_VERSION			2
+
 #define LXL_FLAGS_VENDOR_LUXUL			0x00000001
 
 struct lxl_hdr {
@@ -60,6 +62,10 @@ struct lxl_hdr {
 	uint8_t		v2_end[0];
 } __packed;
 
+/**************************************************
+ * Helpers
+ **************************************************/
+
 static uint32_t lxlfw_hdr_len(uint32_t version)
 {
 	switch (version) {
@@ -75,6 +81,55 @@ static uint32_t lxlfw_hdr_len(uint32_t version)
 	}
 }
 
+/**
+ * lxlfw_open - open Luxul firmware file and validate it
+ *
+ * @pathname: Luxul firmware file
+ * @hdr: struct to read to
+ */
+static FILE *lxlfw_open(const char *pathname, struct lxl_hdr *hdr)
+{
+	size_t v0_len = lxlfw_hdr_len(0);
+	size_t min_hdr_len;
+	uint32_t version;
+	size_t bytes;
+	FILE *lxl;
+
+	lxl = fopen(pathname, "r");
+	if (!lxl) {
+		fprintf(stderr, "Could not open \"%s\" file\n", pathname);
+		goto err_out;
+	}
+
+	bytes = fread(hdr, 1, v0_len, lxl);
+	if (bytes != v0_len) {
+		fprintf(stderr, "Input file too small to use Luxul format\n");
+		goto err_close;
+	}
+
+	if (memcmp(hdr->magic, "LXL#", 4)) {
+		fprintf(stderr, "File <file> does not use Luxul's format\n");
+		goto err_close;
+	}
+
+	version = le32_to_cpu(hdr->version);
+
+	min_hdr_len = lxlfw_hdr_len(min(version, MAX_SUPPORTED_VERSION));
+
+	bytes = fread(((uint8_t *)hdr) + v0_len, 1, min_hdr_len - v0_len, lxl);
+	if (bytes != min_hdr_len - v0_len) {
+		fprintf(stderr, "Input file too small for header version %d\n", version);
+		goto err_close;
+	}
+
+	return lxl;
+
+err_close:
+	fclose(lxl);
+err_out:
+	return NULL;
+}
+
 /**************************************************
  * Info
  **************************************************/
@@ -82,9 +137,7 @@ static uint32_t lxlfw_hdr_len(uint32_t version)
 static int lxlfw_info(int argc, char **argv) {
 	struct lxl_hdr hdr;
 	uint32_t version;
-	uint32_t hdr_len;
 	char board[17];
-	size_t bytes;
 	int err = 0;
 	FILE *lxl;
 	int flags;
@@ -95,33 +148,14 @@ static int lxlfw_info(int argc, char **argv) {
 		goto out;
 	}
 
-	lxl = fopen(argv[2], "r");
+	lxl = lxlfw_open(argv[2], &hdr);
 	if (!lxl) {
-		fprintf(stderr, "Could not open \"%s\" file\n", argv[2]);
+		fprintf(stderr, "Could not open \"%s\" Luxul firmware\n", argv[2]);
 		err = -ENOENT;
 		goto out;
 	}
 
-	bytes = fread(&hdr, 1, sizeof(hdr), lxl);
-	if (bytes < offsetof(struct lxl_hdr, v0_end)) {
-		fprintf(stderr, "Input file too small to use Luxul format\n");
-		err = -ENXIO;
-		goto err_close;
-	}
-
-	if (memcmp(hdr.magic, "LXL#", 4)) {
-		fprintf(stderr, "File <file> does not use Luxul's format\n");
-		err =  -EINVAL;
-		goto err_close;
-	}
-
 	version = le32_to_cpu(hdr.version);
-	hdr_len = lxlfw_hdr_len(version);
-	if (bytes < hdr_len) {
-		fprintf(stderr, "Input file too small for header version %d\n", version);
-		err = -ENXIO;
-		goto err_close;
-	}
 
 	printf("Format version:\t%d\n", version);
 	printf("Header length:\t%d\n", le32_to_cpu(hdr.hdr_len));
