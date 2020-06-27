@@ -130,6 +130,44 @@ err_out:
 	return NULL;
 }
 
+/**
+ * lxlfw_copy_data - read data from one stream and write to another
+ *
+ * @from: input stream
+ * @to: output stream
+ * @size: amount of bytes to copy (0 to copy all data)
+ */
+static ssize_t lxlfw_copy_data(FILE *from, FILE *to, size_t size)
+{
+	int copy_all = size == 0;
+	char buf[512];
+	size_t ret = 0;
+
+	while (copy_all || size) {
+		size_t to_read = copy_all ? sizeof(buf) : min(size, sizeof(buf));
+		size_t bytes;
+
+		bytes = fread(buf, 1, to_read, from);
+		if (bytes == 0 && copy_all) {
+			break;
+		} else if (bytes <= 0) {
+			fprintf(stderr, "Failed to read data\n");
+			return -EIO;
+		}
+
+		if (fwrite(buf, 1, bytes, to) != bytes) {
+			fprintf(stderr, "Failed to write data\n");
+			return -EIO;
+		}
+
+		if (!copy_all)
+			size -= bytes;
+		ret += bytes;
+	}
+
+	return ret;
+}
+
 /**************************************************
  * Info
  **************************************************/
@@ -269,12 +307,11 @@ static int lxlfw_create(int argc, char **argv) {
 		goto err_close_lxl;
 	}
 
-	while ((bytes = fread(buf, 1, sizeof(buf), in)) > 0) {
-		if (fwrite(buf, 1, bytes, lxl) != bytes) {
-			fprintf(stderr, "Could not copy %zu bytes from input file\n", bytes);
-			err = -EIO;
-			goto err_close_lxl;
-		}
+	bytes = lxlfw_copy_data(in, lxl, 0);
+	if (bytes < 0) {
+		fprintf(stderr, "Could not copy %zu bytes from input file\n", bytes);
+		err = -EIO;
+		goto err_close_lxl;
 	}
 
 err_close_lxl:
