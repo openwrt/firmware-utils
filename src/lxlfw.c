@@ -48,6 +48,9 @@
 
 #define LXL_FLAGS_VENDOR_LUXUL			0x00000001
 
+#define LXL_BLOB_CERTIFICATE			0x0001
+#define LXL_BLOB_SIGNATURE			0x0002
+
 struct lxl_hdr {
 	char		magic[4];	/* "LXL#" */
 	uint32_t	version;
@@ -205,7 +208,6 @@ static ssize_t lxlfw_copy_data(FILE *from, FILE *to, size_t size)
  * @type: blob type
  * @pathname: external file pathname to read blob data from
  */
-#if 0
 static ssize_t lxlfw_write_blob(FILE *lxl, uint16_t type, const char *pathname)
 {
 	struct lxl_blob blob = {
@@ -249,7 +251,6 @@ static ssize_t lxlfw_write_blob(FILE *lxl, uint16_t type, const char *pathname)
 
 	return blob_data_len + sizeof(blob);
 }
-#endif
 
 /**************************************************
  * Info
@@ -426,7 +427,6 @@ out:
  * @len: blob data length
  * @path: external file pathname to write
  */
-#if 0
 static int lxlfw_blob_save(FILE *lxl, size_t len, const char *path) {
 	char buf[256];
 	size_t bytes;
@@ -460,9 +460,10 @@ err_close_out:
 err_out:
 	return err;
 }
-#endif
 
 static int lxlfw_blobs(int argc, char **argv) {
+	char *certificate_path = NULL;
+	char *signature_path = NULL;
 	struct lxl_hdr hdr;
 	uint32_t version;
 	size_t offset;
@@ -478,10 +479,18 @@ static int lxlfw_blobs(int argc, char **argv) {
 	}
 
 	optind = 3;
-	while ((c = getopt(argc, argv, "")) != -1) {
+	while ((c = getopt(argc, argv, "c:s:")) != -1) {
+		switch (c) {
+		case 'c':
+			certificate_path = optarg;
+			break;
+		case 's':
+			signature_path = optarg;
+			break;
+		}
 	}
 
-	if (1) {
+	if (!certificate_path && !signature_path) {
 		fprintf(stderr, "Missing info on blobs to extract\n");
 		err = -EINVAL;
 		goto out;
@@ -505,6 +514,7 @@ static int lxlfw_blobs(int argc, char **argv) {
 	fseek(lxl, le32_to_cpu(hdr.blobs_offset), SEEK_SET);
 	for (offset = 0; offset < le32_to_cpu(hdr.blobs_len); ) {
 		struct lxl_blob blob;
+		uint16_t type;
 		size_t len;
 
 		bytes = fread(&blob, 1, sizeof(blob), lxl);
@@ -521,10 +531,15 @@ static int lxlfw_blobs(int argc, char **argv) {
 			goto err_close;
 		}
 
+		type = le16_to_cpu(blob.type);
 		len = le32_to_cpu(blob.len);
 
-		if (0) {
-			/* TODO */
+		if (type == LXL_BLOB_CERTIFICATE && certificate_path) {
+			err = lxlfw_blob_save(lxl, len, certificate_path);
+			certificate_path = NULL;
+		} else if (type == LXL_BLOB_SIGNATURE && signature_path) {
+			err = lxlfw_blob_save(lxl, len, signature_path);
+			signature_path = NULL;
 		} else {
 			fseek(lxl, len, SEEK_CUR);
 		}
@@ -533,6 +548,15 @@ static int lxlfw_blobs(int argc, char **argv) {
 			goto err_close;
 		}
 		offset += len;
+	}
+
+	if (certificate_path) {
+		fprintf(stderr, "Failed to find certificate blob\n");
+		err = -ENOENT;
+	}
+	if (signature_path) {
+		fprintf(stderr, "Failed to find signature blob\n");
+		err = -ENOENT;
 	}
 
 err_close:
@@ -549,6 +573,8 @@ static int lxlfw_create(int argc, char **argv) {
 	struct lxl_hdr hdr = {
 		.magic = { 'L', 'X', 'L', '#' },
 	};
+	char *certificate_path = NULL;
+	char *signature_path = NULL;
 	char *in_path = NULL;
 	uint32_t version = 0;
 	uint32_t hdr_raw_len;	/* Header length without blobs */
@@ -588,6 +614,14 @@ static int lxlfw_create(int argc, char **argv) {
 			}
 			version = max(version, 2);
 			break;
+		case 'c':
+			certificate_path = optarg;
+			version = max(version, 3);
+			break;
+		case 's':
+			signature_path = optarg;
+			version = max(version, 3);
+			break;
 		}
 	}
 
@@ -619,7 +653,22 @@ static int lxlfw_create(int argc, char **argv) {
 	blobs_len = 0;
 
 	fseek(lxl, hdr_raw_len, SEEK_SET);
-	/* TODO */
+	if (certificate_path) {
+		bytes = lxlfw_write_blob(lxl, LXL_BLOB_CERTIFICATE, certificate_path);
+		if (bytes <= 0) {
+			fprintf(stderr, "Failed to write certificate\n");
+			goto err_close_lxl;
+		}
+		blobs_len += bytes;
+	}
+	if (signature_path) {
+		bytes = lxlfw_write_blob(lxl, LXL_BLOB_SIGNATURE, signature_path);
+		if (bytes <= 0) {
+			fprintf(stderr, "Failed to write signature\n");
+			goto err_close_lxl;
+		}
+		blobs_len += bytes;
+	}
 
 	if (blobs_len) {
 		hdr.blobs_offset = cpu_to_le32(hdr_raw_len);
@@ -664,6 +713,8 @@ out:
 
 static int lxlfw_insert(int argc, char **argv) {
 	struct lxl_hdr hdr = { };
+	char *certificate_path = NULL;
+	char *signature_path = NULL;
 	char *tmp_path = NULL;
 	uint32_t version = 0;
 	uint32_t hdr_raw_len;	/* Header length without blobs */
@@ -684,10 +735,18 @@ static int lxlfw_insert(int argc, char **argv) {
 	}
 
 	optind = 3;
-	while ((c = getopt(argc, argv, "")) != -1) {
+	while ((c = getopt(argc, argv, "c:s:")) != -1) {
+		switch (c) {
+		case 'c':
+			certificate_path = optarg;
+			break;
+		case 's':
+			signature_path = optarg;
+			break;
+		}
 	}
 
-	if (1) {
+	if (!certificate_path && !signature_path) {
 		fprintf(stderr, "Missing info on blobs to insert\n");
 		err = -EINVAL;
 		goto out;
@@ -747,6 +806,7 @@ static int lxlfw_insert(int argc, char **argv) {
 		fseek(lxl, le32_to_cpu(hdr.blobs_offset), SEEK_SET);
 		for (offset = 0; offset < le32_to_cpu(hdr.blobs_len); ) {
 			struct lxl_blob blob;
+			uint16_t type;
 			size_t len;
 
 			bytes = fread(&blob, 1, sizeof(blob), lxl);
@@ -756,11 +816,13 @@ static int lxlfw_insert(int argc, char **argv) {
 				goto err_close_tmp;
 			}
 
+			type = le16_to_cpu(blob.type);
 			len = le32_to_cpu(blob.len);
 
 			/* Don't copy blobs that have to be replaced */
-			if (0) {
-				/* TODO */
+			if ((type == LXL_BLOB_CERTIFICATE && certificate_path) ||
+			    (type == LXL_BLOB_SIGNATURE && signature_path)) {
+				fseek(lxl, len, SEEK_CUR);
 			} else {
 				fseek(lxl, -sizeof(blob), SEEK_CUR);
 				bytes = lxlfw_copy_data(lxl, tmp, sizeof(blob) + len);
@@ -778,7 +840,22 @@ static int lxlfw_insert(int argc, char **argv) {
 
 	/* Write new blobs */
 
-	/* TODO */
+	if (certificate_path) {
+		bytes = lxlfw_write_blob(tmp, LXL_BLOB_CERTIFICATE, certificate_path);
+		if (bytes <= 0) {
+			fprintf(stderr, "Failed to write certificate\n");
+			goto err_close_tmp;
+		}
+		blobs_len += bytes;
+	}
+	if (signature_path) {
+		bytes = lxlfw_write_blob(tmp, LXL_BLOB_SIGNATURE, signature_path);
+		if (bytes <= 0) {
+			fprintf(stderr, "Failed to write signature\n");
+			goto err_close_tmp;
+		}
+		blobs_len += bytes;
+	}
 
 	hdr.blobs_offset = cpu_to_le32(hdr_raw_len);
 	hdr.blobs_len = cpu_to_le32(blobs_len);
@@ -848,6 +925,8 @@ static void usage() {
 	printf("\n");
 	printf("Extract blobs from Luxul firmware:\n");
 	printf("\tlxlfw blobs <file> [options]\n");
+	printf("\t-c file\t\t\t\tcertificate output file\n");
+	printf("\t-s file\t\t\t\tsignature output file\n");
 	printf("\n");
 	printf("Create new Luxul firmware:\n");
 	printf("\tlxlfw create <file> [options]\n");
@@ -855,9 +934,14 @@ static void usage() {
 	printf("\t-l\t\t\t\tmark firmware as created by Luxul company (DON'T USE)\n");
 	printf("\t-b board\t\t\tboard (device) name\n");
 	printf("\t-r release\t\t\trelease number (e.g. 5.1.0, 7.1.0.2)\n");
+	printf("\t-c file\t\t\t\tcertificate file\n");
+	printf("\t-s file\t\t\t\tsignature file\n");
 	printf("\n");
 	printf("Insert blob to Luxul firmware:\n");
 	printf("\tlxlfw insert <file> [options]\n");
+	printf("\t-c file\t\t\t\tcertificate file\n");
+	printf("\t-s file\t\t\t\tsignature file\n");
+
 }
 
 int main(int argc, char **argv) {
