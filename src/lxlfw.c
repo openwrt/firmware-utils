@@ -345,6 +345,77 @@ out:
 }
 
 /**************************************************
+ * Extract
+ **************************************************/
+
+static int lxlfw_extract(int argc, char **argv) {
+	struct lxl_hdr hdr;
+	char *out_path = NULL;
+	ssize_t bytes;
+	int err = 0;
+	FILE *lxl;
+	FILE *out;
+	int c;
+
+	if (argc < 3) {
+		fprintf(stderr, "Missing <file> argument\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	optind = 3;
+	while ((c = getopt(argc, argv, "O:")) != -1) {
+		switch (c) {
+		case 'O':
+			out_path = optarg;
+			break;
+		}
+	}
+
+	if (!out_path) {
+		fprintf(stderr, "Missing output file path\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	lxl = lxlfw_open(argv[2], &hdr);
+	if (!lxl) {
+		fprintf(stderr, "Failed to open \"%s\" Luxul firmware\n", argv[2]);
+		err = -ENOENT;
+		goto out;
+	}
+
+	fseek(lxl, le32_to_cpu(hdr.hdr_len), SEEK_SET);
+
+	if (!strcmp(out_path, "-")) {
+		out = stdout;
+	} else {
+		out = fopen(out_path, "w+");
+		if (!out) {
+			fprintf(stderr, "Failed to open \"%s\" file\n", out_path);
+			err = -EIO;
+			goto err_close_lxl;
+		}
+	}
+
+	bytes = lxlfw_copy_data(lxl, out, 0);
+	if (bytes < 0) {
+		fprintf(stderr, "Failed to copy image: %zd\n", bytes);
+		err = -EIO;
+		goto err_close_lxl;
+	}
+
+	if (out != stdout) {
+		fclose(out);
+	}
+
+err_close_lxl:
+	fclose(lxl);
+out:
+	return err;
+}
+
+/**************************************************
  * Blobs
  **************************************************/
 
@@ -771,6 +842,10 @@ static void usage() {
 	printf("Get info about Luxul firmware:\n");
 	printf("\tlxlfw info <file>\n");
 	printf("\n");
+	printf("Extract image from Luxul firmware:\n");
+	printf("\tlxlfw extract <file> [options]\n");
+	printf("\t-O file\t\t\t\toutput file (- for stdout)\n");
+	printf("\n");
 	printf("Extract blobs from Luxul firmware:\n");
 	printf("\tlxlfw blobs <file> [options]\n");
 	printf("\n");
@@ -789,6 +864,8 @@ int main(int argc, char **argv) {
 	if (argc > 1) {
 		if (!strcmp(argv[1], "info"))
 			return lxlfw_info(argc, argv);
+		else if (!strcmp(argv[1], "extract"))
+			return lxlfw_extract(argc, argv);
 		else if (!strcmp(argv[1], "blobs"))
 			return lxlfw_blobs(argc, argv);
 		else if (!strcmp(argv[1], "create"))
