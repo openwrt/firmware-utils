@@ -17,6 +17,7 @@ ADD_DEFINITIONS(-Wall -Wno-unused-parameter)
 
 MACRO(FW_UTIL util deps extra_cflags libs)
   ADD_EXECUTABLE(${util} src/${util}.c ${deps})
+  INSTALL(TARGETS ${util} RUNTIME)
   IF(NOT ${ARGV2} STREQUAL "")
     SET_TARGET_PROPERTIES(${util} PROPERTIES COMPILE_FLAGS ${extra_cflags})
   ENDIF()
