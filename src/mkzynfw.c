@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <byteswap.h>
 #include <unistd.h>	/* for unlink() */
 #include <libgen.h>
 #include <getopt.h>	/* for getopt() */
