@@ -30,6 +30,7 @@
  * Add option -2 to allow v2 header
  */
 
+#include <byteswap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -45,7 +46,7 @@
 #define STORE32_LE(X)		(X)
 #define LOAD32_LE(X)		(X)
 #else
-#error unkown endianness!
+#error unknown endianness!
 #endif
 
 uint32_t crc32buf(char *buf, size_t len);

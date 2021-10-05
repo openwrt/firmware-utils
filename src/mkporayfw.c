@@ -15,6 +15,7 @@
  *   Copyright (C) 2008,2009 Wang Jian <lark@linux.net.cn>
  */
 
+#include <byteswap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

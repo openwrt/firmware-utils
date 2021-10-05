@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
+#include <byteswap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -14,7 +15,7 @@
 #define STORE32_LE(X)		(X)
 #define LOAD32_LE(X)		(X)
 #else
-#error unkown endianness!
+#error unknown endianness!
 #endif
 
 /**********************************************************************/

@@ -10,6 +10,7 @@
  * Copyright (C) 2010, Intel Corp. Huang Ying <ying.huang@intel.com>
  */
 
+#include <byteswap.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
