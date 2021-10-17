@@ -3,6 +3,7 @@
  *  Copyright (C) 2009 Gabor Juhos <juhosg@openwrt.org>
  */
 
+#include <byteswap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
