@@ -193,8 +193,8 @@ static int otrx_check(int argc, char **argv) {
 	}
 
 	crc32 = 0xffffffff;
-	fseek(trx, trx_offset + TRX_FLAGS_OFFSET, SEEK_SET);
-	length -= TRX_FLAGS_OFFSET;
+	crc32 = otrx_crc32(crc32, (uint8_t *)&hdr + TRX_FLAGS_OFFSET, sizeof(hdr) - TRX_FLAGS_OFFSET);
+	length -= sizeof(hdr);
 	while ((bytes = fread(buf, 1, otrx_min(sizeof(buf), length), trx)) > 0) {
 		crc32 = otrx_crc32(crc32, buf, bytes);
 		length -= bytes;
