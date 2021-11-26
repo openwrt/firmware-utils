@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #if !defined(__BYTE_ORDER)
@@ -131,6 +132,44 @@ uint32_t otrx_crc32(uint32_t crc, uint8_t *buf, size_t len) {
 }
 
 /**************************************************
+ * Helpers
+ **************************************************/
+
+static FILE *otrx_open(const char *pathname, const char *mode) {
+	if (strcmp(pathname, "-"))
+		return fopen(pathname, mode);
+
+	if (isatty(fileno(stdin))) {
+		fprintf(stderr, "Reading from TTY stdin is unsupported\n");
+		return NULL;
+	}
+
+	return stdin;
+}
+
+static int otrx_skip(FILE *fp, size_t length)
+{
+	if (fseek(fp, length, SEEK_CUR)) {
+		uint8_t buf[1024];
+		size_t bytes;
+
+		do {
+			bytes = fread(buf, 1, otrx_min(sizeof(buf), length), fp);
+			if (bytes <= 0)
+				return -EIO;
+			length -= bytes;
+		} while (length);
+	}
+
+	return 0;
+}
+
+static void otrx_close(FILE *fp) {
+	if (fp != stdin)
+		fclose(fp);
+}
+
+/**************************************************
  * Check
  **************************************************/
 
@@ -164,14 +203,19 @@ static int otrx_check(int argc, char **argv) {
 	optind = 3;
 	otrx_check_parse_options(argc, argv);
 
-	trx = fopen(trx_path, "r");
+	trx = otrx_open(trx_path, "r");
 	if (!trx) {
 		fprintf(stderr, "Couldn't open %s\n", trx_path);
 		err = -EACCES;
 		goto out;
 	}
 
-	fseek(trx, trx_offset, SEEK_SET);
+	if (trx_offset && otrx_skip(trx, trx_offset)) {
+		fprintf(stderr, "Couldn't skip first %zd B\n", trx_offset);
+		err =  -EIO;
+		goto err_close;
+	}
+
 	bytes = fread(&hdr, 1, sizeof(hdr), trx);
 	if (bytes != sizeof(hdr)) {
 		fprintf(stderr, "Couldn't read %s header\n", trx_path);
@@ -215,7 +259,7 @@ static int otrx_check(int argc, char **argv) {
 	printf("Found a valid TRX version %d\n", le32_to_cpu(hdr.version));
 
 err_close:
-	fclose(trx);
+	otrx_close(trx);
 out:
 	return err;
 }
