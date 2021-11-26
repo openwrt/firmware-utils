@@ -525,10 +525,6 @@ static int oseama_extract(int argc, char **argv) {
 		fprintf(stderr, "No entity specified\n");
 		err = -EINVAL;
 		goto out;
-	} else if (!out_path) {
-		fprintf(stderr, "No output file specified\n");
-		err = -EINVAL;
-		goto out;
 	}
 
 	seama = oseama_open(seama_path, "r");
@@ -538,11 +534,15 @@ static int oseama_extract(int argc, char **argv) {
 		goto out;
 	}
 
-	out = fopen(out_path, "w");
-	if (!out) {
-		fprintf(stderr, "Couldn't open %s\n", out_path);
-		err = -EACCES;
-		goto err_close_seama;
+	if (out_path) {
+		out = fopen(out_path, "w");
+		if (!out) {
+			fprintf(stderr, "Couldn't open %s\n", out_path);
+			err = -EACCES;
+			goto err_close_seama;
+		}
+	} else {
+		out = stdout;
 	}
 
 	bytes = fread(&hdr, 1, sizeof(hdr), seama);
@@ -558,7 +558,8 @@ static int oseama_extract(int argc, char **argv) {
 	oseama_extract_entity(seama, out);
 
 err_close_out:
-	fclose(out);
+	if (out != stdout)
+		fclose(out);
 err_close_seama:
 	oseama_close(seama);
 out:
