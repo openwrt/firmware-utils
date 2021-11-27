@@ -42,9 +42,16 @@ struct trx_header {
 	uint32_t offset[3];
 };
 
+struct otrx_part {
+	int idx;
+	size_t offset;
+	size_t length;
+};
+
 struct otrx_ctx {
 	FILE *fp;
 	struct trx_header hdr;
+	struct otrx_part parts[TRX_MAX_PARTS];		/* Sorted partitions */
 };
 
 char *trx_path;
@@ -174,12 +181,26 @@ static void otrx_close(FILE *fp) {
 		fclose(fp);
 }
 
+static int otrx_part_compar(const void *a, const void *b)
+{
+	const struct otrx_part *partA = a;
+	const struct otrx_part *partB = b;
+
+	if (!partA->offset)
+		return 1;
+	if (!partB->offset)
+		return -1;
+
+	return partA->offset - partB->offset;
+}
+
 static int otrx_open_parse(const char *pathname, const char *mode,
 			   struct otrx_ctx *otrx)
 {
 	size_t length;
 	size_t bytes;
 	int err;
+	int i;
 
 	otrx->fp = otrx_open(pathname, mode);
 	if (!otrx->fp) {
@@ -212,6 +233,22 @@ static int otrx_open_parse(const char *pathname, const char *mode,
 		fprintf(stderr, "Length read from TRX too low (%zu B)\n", length);
 		err = -EINVAL;
 		goto err_close;
+	}
+
+	for (i = 0; i < TRX_MAX_PARTS; i++) {
+		otrx->parts[i].idx = i;
+		otrx->parts[i].offset = le32_to_cpu(otrx->hdr.offset[i]);
+	}
+	qsort(otrx->parts, TRX_MAX_PARTS, sizeof(otrx->parts[0]), otrx_part_compar);
+
+	/* Calculate length of every partition */
+	for (i = 0; i < TRX_MAX_PARTS; i++) {
+		if (otrx->parts[i].offset) {
+			if (i + 1 >= TRX_MAX_PARTS || !otrx->parts[i + 1].offset)
+				otrx->parts[i].length = le32_to_cpu(otrx->hdr.length) - otrx->parts[i].offset;
+			else
+				otrx->parts[i].length = otrx->parts[i + 1].offset - otrx->parts[i].offset;
+		}
 	}
 
 	return 0;
@@ -589,21 +626,14 @@ static int otrx_extract(int argc, char **argv) {
 	}
 
 	for (i = 0; i < TRX_MAX_PARTS; i++) {
-		size_t length;
+		struct otrx_part *part = &otrx.parts[i];
 
-		if (!partition[i])
+		if (!part->offset && partition[part->idx])
+			printf("TRX doesn't contain partition %d, can't extract %s\n", part->idx + 1, partition[part->idx]);
+		if (!part->offset || !partition[part->idx])
 			continue;
-		if (!otrx.hdr.offset[i]) {
-			printf("TRX doesn't contain partition %d, can't extract %s\n", i + 1, partition[i]);
-			continue;
-		}
-
-		if (i + 1 >= TRX_MAX_PARTS || !otrx.hdr.offset[i + 1])
-			length = le32_to_cpu(otrx.hdr.length) - le32_to_cpu(otrx.hdr.offset[i]);
 		else
-			length = le32_to_cpu(otrx.hdr.offset[i + 1]) - le32_to_cpu(otrx.hdr.offset[i]);
-
-		otrx_extract_copy(otrx.fp, trx_offset + le32_to_cpu(otrx.hdr.offset[i]), length, partition[i]);
+			otrx_extract_copy(otrx.fp, trx_offset + part->offset, part->length, partition[part->idx]);
 	}
 
 	otrx_close(otrx.fp);
