@@ -558,7 +558,7 @@ static void otrx_extract_parse_options(int argc, char **argv) {
 	}
 }
 
-static int otrx_extract_copy(FILE *trx, size_t offset, size_t length, char *out_path) {
+static int otrx_extract_copy(struct otrx_ctx *otrx, size_t length, char *out_path) {
 	FILE *out;
 	size_t bytes;
 	uint8_t *buf;
@@ -578,8 +578,7 @@ static int otrx_extract_copy(FILE *trx, size_t offset, size_t length, char *out_
 		goto err_close;
 	}
 
-	fseek(trx, offset, SEEK_SET);
-	bytes = fread(buf, 1, length, trx);
+	bytes = fread(buf, 1, length, otrx->fp);
 	if (bytes != length) {
 		fprintf(stderr, "Couldn't read %zu B of data from %s\n", length, trx_path);
 		err =  -ENOMEM;
@@ -631,9 +630,9 @@ static int otrx_extract(int argc, char **argv) {
 		if (!part->offset && partition[part->idx])
 			printf("TRX doesn't contain partition %d, can't extract %s\n", part->idx + 1, partition[part->idx]);
 		if (!part->offset || !partition[part->idx])
-			continue;
+			otrx_skip(otrx.fp, part->length);
 		else
-			otrx_extract_copy(otrx.fp, trx_offset + part->offset, part->length, partition[part->idx]);
+			otrx_extract_copy(&otrx, part->length, partition[part->idx]);
 	}
 
 	otrx_close(otrx.fp);
