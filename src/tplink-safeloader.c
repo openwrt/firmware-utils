@@ -802,7 +802,7 @@ static struct device_info boards[] = {
 			"{product_name:Archer A7,product_ver:5.0.0,special_id:54570000}\n"
 			"{product_name:Archer A7,product_ver:5.0.0,special_id:52550000}\n",
 		.part_trail = 0x00,
-		.soft_ver = SOFT_VER_TEXT("soft_ver:1.0.0\n"),
+		.soft_ver = SOFT_VER_TEXT("soft_ver:7.0.0\n"),
 
 		/* We're using a dynamic kernel/rootfs split here */
 		.partitions = {
