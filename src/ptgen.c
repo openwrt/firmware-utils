@@ -70,6 +70,10 @@ typedef struct {
 	GUID_INIT( 0x21686148, 0x6449, 0x6E6F, \
 			0x74, 0x4E, 0x65, 0x65, 0x64, 0x45, 0x46, 0x49)
 
+#define GUID_PARTITION_CHROME_OS_KERNEL \
+	GUID_INIT( 0xFE3A2A5D, 0x4F32, 0x41A7, \
+			0xB7, 0x25, 0xAC, 0xCC, 0x32, 0x85, 0xA3, 0x09)
+
 #define GUID_PARTITION_LINUX_FIT_GUID \
 	GUID_INIT( 0xcae9be83, 0xb15f, 0x49cc, \
 			0x86, 0x3f, 0x08, 0x1b, 0x74, 0x4a, 0x2d, 0x93)
@@ -116,7 +120,9 @@ struct partinfo {
 	int hybrid;
 	char *name;
 	short int required;
+	bool has_guid;
 	guid_t guid;
+	uint64_t gattr;  /* GPT partition attributes */
 };
 
 /* GPT Partition table header */
@@ -254,6 +260,23 @@ static inline int guid_parse(char *buf, guid_t *guid)
 	swap(guid->b[4], guid->b[5]);
 	swap(guid->b[6], guid->b[7]);
 	return 0;
+}
+
+/*
+ * Map GPT partition types to partition GUIDs.
+ * NB: not all GPT partition types have an equivalent MBR type.
+ */
+static inline bool parse_gpt_parttype(const char *type, struct partinfo *part)
+{
+	if (!strcmp(type, "cros_kernel")) {
+		part->has_guid = true;
+		part->guid = GUID_PARTITION_CHROME_OS_KERNEL;
+		/* Default attributes: bootable kernel. */
+		part->gattr = (1ULL << 48) |  /* priority=1 */
+			      (1ULL << 56);  /* success=1 */
+		return true;
+	}
+	return false;
 }
 
 /* init an utf-16 string from utf-8 string */
@@ -416,6 +439,7 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 			to_chs(sect - 1, pte[1].chs_end);
 			pmbr++;
 		}
+		gpte[i].attr = parts[i].gattr;
 
 		if (parts[i].name)
 			init_utf16(parts[i].name, (uint16_t *)gpte[i].name, GPT_ENTRY_NAME_SIZE / sizeof(uint16_t));
@@ -523,7 +547,9 @@ fail:
 
 static void usage(char *prog)
 {
-	fprintf(stderr, "Usage: %s [-v] [-n] [-g] -h <heads> -s <sectors> -o <outputfile> [-a 0..4] [-l <align kB>] [-G <guid>] [[-t <type>] [-r] [-N <name>] -p <size>[@<start>]...] \n", prog);
+	fprintf(stderr, "Usage: %s [-v] [-n] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
+			"          [-a 0..4] [-l <align kB>] [-G <guid>]\n"
+			"          [[-t <type> | -T <GPT part type>] [-r] [-N <name>] -p <size>[@<start>]...] \n", prog);
 	exit(EXIT_FAILURE);
 }
 
@@ -559,9 +585,8 @@ int main (int argc, char **argv)
 	uint32_t signature = 0x5452574F; /* 'OWRT' */
 	guid_t guid = GUID_INIT( signature, 0x2211, 0x4433, \
 			0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0x00);
-	guid_t part_guid = GUID_PARTITION_BASIC_DATA;
 
-	while ((ch = getopt(argc, argv, "h:s:p:a:t:o:vnHN:gl:rS:G:")) != -1) {
+	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:vnHN:gl:rS:G:")) != -1) {
 		switch (ch) {
 		case 'o':
 			filename = optarg;
@@ -594,12 +619,13 @@ int main (int argc, char **argv)
 				*(p++) = 0;
 				parts[part].start = to_kbytes(p);
 			}
-			part_guid = type_to_guid_and_name(type, &name);
+			if (!parts[part].has_guid)
+				parts[part].guid = type_to_guid_and_name(type, &name);
+
 			parts[part].size = to_kbytes(optarg);
 			parts[part].required = required;
 			parts[part].name = name;
 			parts[part].hybrid = hybrid;
-			parts[part].guid = part_guid;
 			fprintf(stderr, "part %ld %ld\n", parts[part].start, parts[part].size);
 			parts[part++].type = type;
 			/*
@@ -629,6 +655,14 @@ int main (int argc, char **argv)
 			break;
 		case 'S':
 			signature = strtoul(optarg, NULL, 0);
+			break;
+		case 'T':
+			if (!parse_gpt_parttype(optarg, &parts[part])) {
+				fprintf(stderr,
+					"Invalid GPT partition type \"%s\"\n",
+					optarg);
+				exit(EXIT_FAILURE);
+			}
 			break;
 		case 'G':
 			if (guid_parse(optarg, &guid)) {
