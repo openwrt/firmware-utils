@@ -1705,6 +1705,37 @@ static struct device_info boards[] = {
 		.last_sysupgrade_partition = "file-system"
 	},
 
+	/** Firmware layout for the EAP615-Wall v1 */
+	{
+		.id = "EAP615-WALL-V1",
+		.soft_ver = SOFT_VER_DEFAULT,
+		.soft_ver_compat_level = 1,
+		.support_list =
+			"SupportList:\r\n"
+			"EAP615-Wall(TP-Link|UN|AX1800-D):1.0\r\n"
+			"EAP615-Wall(TP-Link|CA|AX1800-D):1.0\r\n"
+			"EAP615-Wall(TP-Link|JP|AX1800-D):1.0\r\n",
+		.part_trail = PART_TRAIL_NONE,
+
+		.partitions = {
+			{"fs-uboot", 0x00000, 0x80000},
+			{"partition-table", 0x80000, 0x02000},
+			{"default-mac", 0x90000, 0x01000},
+			{"support-list", 0x91000, 0x00100},
+			{"product-info", 0x91100, 0x00400},
+			{"soft-version", 0x92000, 0x00100},
+			{"firmware", 0xa0000, 0xcf0000},
+			{"user-config", 0xd90000, 0x60000},
+			{"mutil-log", 0xf30000, 0x80000},
+			{"oops", 0xfb0000, 0x40000},
+			{"radio", 0xff0000, 0x10000},
+			{NULL, 0, 0}
+		},
+
+		.first_sysupgrade_partition = "os-image",
+		.last_sysupgrade_partition = "file-system"
+	},
+
 	/** Firmware layout for the TL-WA1201 v2 */
 	{
 		.id     = "TL-WA1201-V2",
