@@ -1967,6 +1967,45 @@ static struct device_info boards[] = {
 		.last_sysupgrade_partition = "file-system"
 	},
 
+	/** Firmware layout for the TL-WPA8631P v3 */
+	{
+		.id     = "TL-WPA8631P-V3",
+		.vendor = "",
+		.support_list =
+			"SupportList:\n"
+			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:41550000}\n"
+			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:45550000}\n"
+			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:55530000}\n",
+		.part_trail = 0x00,
+		.soft_ver = SOFT_VER_DEFAULT,
+
+		.partitions = {
+			{"fs-uboot", 0x00000, 0x20000},
+			{"firmware", 0x20000, 0x710000},
+			{"partition-table", 0x730000, 0x02000},
+			{"default-mac", 0x732000, 0x00020},
+			{"pin", 0x732100, 0x00020},
+			{"device-id", 0x732200, 0x00030},
+			{"default-region", 0x732300, 0x00010},
+			{"product-info", 0x732400, 0x00200},
+			{"extra-para", 0x732600, 0x00200},
+			{"soft-version", 0x732800, 0x00200},
+			{"support-list", 0x732a00, 0x00100},
+			{"profile", 0x732b00, 0x00100},
+			{"default-config", 0x732c00, 0x00800},
+			{"plc-type", 0x733400, 0x00020},
+			{"default-pib", 0x733500, 0x06000},
+			{"user-config", 0x740000, 0x10000},
+			{"plc-pib", 0x750000, 0x10000},
+			{"plc-nvm", 0x760000, 0x90000},
+			{"radio", 0x7f0000, 0x10000},
+			{NULL, 0, 0}
+		},
+
+		.first_sysupgrade_partition = "os-image",
+		.last_sysupgrade_partition = "file-system"
+	},
+
 	/** Firmware layout for the TL-WR1043 v5 */
 	{
 		.id     = "TLWR1043NV5",
