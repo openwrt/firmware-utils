@@ -831,6 +831,49 @@ static struct device_info boards[] = {
 		.last_sysupgrade_partition = "file-system",
 	},
 
+	/** Firmware layout for the Archer A9 v6 */
+	{
+		.id     = "ARCHER-A9-V6",
+		.support_list =
+			"SupportList:\n"
+			"{product_name:Archer A9,product_ver:6.0,special_id:55530000}\n"
+			"{product_name:Archer A9,product_ver:6.0,special_id:45550000}\n"
+			"{product_name:Archer A9,product_ver:6.0,special_id:52550000}\n"
+			"{product_name:Archer A9,product_ver:6.0,special_id:4A500000}\n"
+			"{product_name:Archer C90,product_ver:6.0,special_id:55530000}\n",
+		.part_trail = 0x00,
+		.soft_ver = SOFT_VER_TEXT("soft_ver:1.1.0\n"),
+
+		/* We're using a dynamic kernel/rootfs split here */
+		.partitions = {
+			{"factory-boot", 0x00000, 0x20000},
+			{"fs-uboot", 0x20000, 0x20000},
+			{"partition-table", 0x40000, 0x10000},
+			{"radio", 0x50000, 0x10000},
+			{"default-mac", 0x60000, 0x00200},
+			{"pin", 0x60200, 0x00200},
+			{"device-id", 0x60400, 0x00100},
+			{"product-info", 0x60500, 0x0fb00},
+			{"soft-version", 0x70000, 0x01000},
+			{"extra-para", 0x71000, 0x01000},
+			{"support-list", 0x72000, 0x0a000},
+			{"profile", 0x7c000, 0x04000},
+			{"user-config", 0x80000, 0x10000},
+			{"ap-config", 0x90000, 0x10000},
+			{"apdef-config", 0xa0000, 0x10000},
+			{"router-config", 0xb0000, 0x10000},
+			{"firmware", 0xc0000, 0xf00000},	/* Stock: name os-image base 0xc0000 size 0x120000 */
+								/* Stock: name file-system base 0x1e0000 size 0xde0000 */
+			{"log", 0xfc0000, 0x20000},
+			{"certificate", 0xfe0000, 0x10000},
+			{"default-config", 0xff0000, 0x10000},
+			{NULL, 0, 0}
+		},
+
+		.first_sysupgrade_partition = "os-image",
+		.last_sysupgrade_partition = "file-system",
+	},
+
 	/** Firmware layout for the C2v3 */
 	{
 		.id     = "ARCHER-C2-V3",
@@ -3222,6 +3265,7 @@ static void build_image(const char *output,
 	/* Some devices need the extra-para partition to accept the firmware */
 	if (strcasecmp(info->id, "ARCHER-A6-V3") == 0 ||
 	    strcasecmp(info->id, "ARCHER-A7-V5") == 0 ||
+	    strcasecmp(info->id, "ARCHER-A9-V6") == 0 ||
 	    strcasecmp(info->id, "ARCHER-C2-V3") == 0 ||
 	    strcasecmp(info->id, "ARCHER-C7-V4") == 0 ||
 	    strcasecmp(info->id, "ARCHER-C7-V5") == 0 ||
