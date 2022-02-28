@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	if (model == MODEL_X490)
-		crc = __bswap_32(crc);
+		crc = bswap_32(crc);
 	fwrite(&crc, sizeof(uint32_t), 1, out_fp);
 	if (ferror(out_fp)) {
 		fprintf(stderr, "Error writing checksum to output file: %s\n", outfile);
