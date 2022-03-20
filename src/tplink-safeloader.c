@@ -1721,7 +1721,8 @@ static struct device_info boards[] = {
 		.id     = "EAP245-V3",
 		.support_list =
 			"SupportList:\r\n"
-			"EAP245(TP-Link|UN|AC1750-D):3.0\r\n",
+			"EAP245(TP-Link|UN|AC1750-D):3.0\r\n"
+			"EAP265 HD(TP-Link|UN|AC1750-D):1.0",
 		.part_trail = PART_TRAIL_NONE,
 		.soft_ver = SOFT_VER_DEFAULT,
 		.soft_ver_compat_level = 1,
