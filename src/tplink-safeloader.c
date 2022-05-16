@@ -48,9 +48,19 @@ struct image_partition_entry {
 
 /** A flash partition table entry */
 struct flash_partition_entry {
-	char *name;
+	const char *name;
 	uint32_t base;
 	uint32_t size;
+};
+
+/** Flash partition names table entry */
+struct factory_partition_names {
+	const char *partition_table;
+	const char *soft_ver;
+	const char *os_image;
+	const char *support_list;
+	const char *file_system;
+	const char *extra_para;
 };
 
 /** Partition trailing padding definitions
@@ -89,6 +99,7 @@ struct device_info {
 	struct flash_partition_entry partitions[MAX_PARTITIONS+1];
 	const char *first_sysupgrade_partition;
 	const char *last_sysupgrade_partition;
+	struct factory_partition_names partition_names;
 };
 
 #define SOFT_VER_TEXT(_t) {.type = SOFT_VER_TYPE_TEXT, .text = _t}
@@ -2963,6 +2974,23 @@ static struct image_partition_entry alloc_image_partition(const char *name, size
 	return entry;
 }
 
+/** Sets up default partition names whenever custom names aren't specified */
+static void set_partition_names(struct device_info *info)
+{
+	if (!info->partition_names.partition_table)
+		info->partition_names.partition_table = "partition-table";
+	if (!info->partition_names.soft_ver)
+		info->partition_names.soft_ver = "soft-version";
+	if (!info->partition_names.os_image)
+		info->partition_names.os_image = "os-image";
+	if (!info->partition_names.support_list)
+		info->partition_names.support_list = "support-list";
+	if (!info->partition_names.file_system)
+		info->partition_names.file_system = "file-system";
+	if (!info->partition_names.extra_para)
+		info->partition_names.extra_para = "extra-para";
+}
+
 /** Frees an image partition */
 static void free_image_partition(struct image_partition_entry entry) {
 	free(entry.data);
@@ -2983,8 +3011,9 @@ static void set_source_date_epoch() {
 }
 
 /** Generates the partition-table partition */
-static struct image_partition_entry make_partition_table(const struct flash_partition_entry *p) {
-	struct image_partition_entry entry = alloc_image_partition("partition-table", 0x800);
+static struct image_partition_entry make_partition_table(const struct device_info *p)
+{
+	struct image_partition_entry entry = alloc_image_partition(p->partition_names.partition_table, 0x800);
 
 	char *s = (char *)entry.data, *end = (char *)(s+entry.size);
 
@@ -2994,9 +3023,10 @@ static struct image_partition_entry make_partition_table(const struct flash_part
 	*(s++) = 0x00;
 
 	size_t i;
-	for (i = 0; p[i].name; i++) {
+	for (i = 0; p->partitions[i].name; i++) {
 		size_t len = end-s;
-		size_t w = snprintf(s, len, "partition %s base 0x%05x size 0x%05x\n", p[i].name, p[i].base, p[i].size);
+		size_t w = snprintf(s, len, "partition %s base 0x%05x size 0x%05x\n",
+			p->partitions[i].name, p->partitions[i].base, p->partitions[i].size);
 
 		if (w > len-1)
 			error(1, 0, "flash partition table overflow?");
@@ -3019,14 +3049,13 @@ static inline uint8_t bcd(uint8_t v) {
 
 
 /** Generates the soft-version partition */
-static struct image_partition_entry make_soft_version(
-	const struct device_info *info, uint32_t rev)
+static struct image_partition_entry make_soft_version(const struct device_info *info, uint32_t rev)
 {
 	/** If an info string is provided, use this instead of
 	 * the structured data, and include the null-termination */
 	if (info->soft_ver.type == SOFT_VER_TYPE_TEXT) {
 		uint32_t len = strlen(info->soft_ver.text) + 1;
-		return init_meta_partition_entry("soft-version",
+		return init_meta_partition_entry(info->partition_names.soft_ver,
 			info->soft_ver.text, len, info->part_trail);
 	}
 
@@ -3056,11 +3085,11 @@ static struct image_partition_entry make_soft_version(
 	};
 
 	if (info->soft_ver_compat_level == 0)
-		return init_meta_partition_entry("soft-version", &s,
+		return init_meta_partition_entry(info->partition_names.soft_ver, &s,
 			(uint8_t *)(&s.compat_level) - (uint8_t *)(&s),
 			info->part_trail);
 	else
-		return init_meta_partition_entry("soft-version", &s,
+		return init_meta_partition_entry(info->partition_names.soft_ver, &s,
 			sizeof(s), info->part_trail);
 }
 
@@ -3069,7 +3098,7 @@ static struct image_partition_entry make_support_list(
 	const struct device_info *info)
 {
 	uint32_t len = strlen(info->support_list);
-	return init_meta_partition_entry("support-list", info->support_list,
+	return init_meta_partition_entry(info->partition_names.support_list, info->support_list,
 		len, info->part_trail);
 }
 
@@ -3077,7 +3106,7 @@ static struct image_partition_entry make_support_list(
 static struct image_partition_entry make_extra_para(
 	const struct device_info *info, const uint8_t *extra_para, size_t len)
 {
-	return init_meta_partition_entry("extra-para", extra_para, len,
+	return init_meta_partition_entry(info->partition_names.extra_para, extra_para, len,
 		info->part_trail);
 }
 
@@ -3308,6 +3337,8 @@ static void build_image(const char *output,
 	struct flash_partition_entry *file_system_partition = NULL;
 	size_t firmware_partition_index = 0;
 
+	set_partition_names(info);
+
 	for (i = 0; info->partitions[i].name; i++) {
 		if (!strcmp(info->partitions[i].name, "firmware"))
 		{
@@ -3331,7 +3362,8 @@ static void build_image(const char *output,
 		for (i = MAX_PARTITIONS-1; i >= firmware_partition_index + 1; i--)
 			info->partitions[i+1] = info->partitions[i];
 
-		file_system_partition->name = "file-system";
+		file_system_partition->name = info->partition_names.file_system;
+
 		file_system_partition->base = firmware_partition->base + kernel.st_size;
 
 		/* Align partition start to erase blocks for factory images only */
@@ -3340,15 +3372,17 @@ static void build_image(const char *output,
 
 		file_system_partition->size = firmware_partition->size - file_system_partition->base;
 
-		os_image_partition->name = "os-image";
+		os_image_partition->name = info->partition_names.os_image;
+
 		os_image_partition->size = kernel.st_size;
 	}
 
-	parts[0] = make_partition_table(info->partitions);
+	parts[0] = make_partition_table(info);
 	parts[1] = make_soft_version(info, rev);
 	parts[2] = make_support_list(info);
-	parts[3] = read_file("os-image", kernel_image, false, NULL);
-	parts[4] = read_file("file-system", rootfs_image, add_jffs2_eof, file_system_partition);
+	parts[3] = read_file(info->partition_names.os_image, kernel_image, false, NULL);
+	parts[4] = read_file(info->partition_names.file_system, rootfs_image, add_jffs2_eof, file_system_partition);
+
 
 	/* Some devices need the extra-para partition to accept the firmware */
 	if (strcasecmp(info->id, "ARCHER-A6-V3") == 0 ||
