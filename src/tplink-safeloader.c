@@ -3788,18 +3788,21 @@ static int firmware_info(const char *input)
 		char buf[128];
 		size_t length;
 		size_t bytes;
+		size_t max_length = sizeof(buf) - 1;
 
 		if (fseek(fp, 0x1014 + e->base + sizeof(struct meta_header), SEEK_SET))
 			error(1, errno, "Can not seek in the firmware");
 
 		printf("\n[Support list]\n");
 		for (length = e->size - sizeof(struct meta_header); length; length -= bytes) {
-			bytes = fread(buf, 1, length > sizeof(buf) ? sizeof(buf) : length, fp);
+			bytes = fread(buf, 1, length > max_length ? max_length: length, fp);
 			if (bytes <= 0)
 				error(1, errno, "Can not read fwup-ptn data from the firmware");
 
-			puts(buf);
+			buf[bytes] = '\0';
+			printf(buf);
 		}
+        printf("\n");
 	}
 
 	e = find_partition(pointers, MAX_PARTITIONS, "partition-table", NULL);
