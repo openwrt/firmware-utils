@@ -92,6 +92,7 @@ static struct board_t {
 	uint32_t modelid;
 } boards[] = {
 	{ "MT7621A", "NR7101", 0x07010001 },
+	{ "MT7621A", "LTE3301-PLUS", 0x03030001  },
 	{}
 };
 
