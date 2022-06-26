@@ -1677,9 +1677,9 @@ static struct device_info boards[] = {
 			"EAP225(TP-Link|UN|AC1350-D):3.20\r\n"
 			"EAP225(TP-Link|UN|AC1350-D):4.0\r\n"
 			"EAP225(TP-Link|UN|AC1350-D):4.0 CA\r\n"
-			"EAP225-Outdoor(TP-Link|UN|AC1350-D):1.0\r\n"
-			"EAP225-Outdoor(TP-Link|UN|AC1350-D):3.0\r\n"
-			"EAP225-Outdoor(TP-Link|UN|AC1350-D):3.0 CA,JP\r\n",
+			"EAP225-Outdoor(TP-Link|UN|AC1200-D):1.0\r\n"
+			"EAP225-Outdoor(TP-Link|UN|AC1200-D):3.0\r\n"
+			"EAP225-Outdoor(TP-Link|UN|AC1200-D):3.0 CA,JP\r\n",
 		.part_trail = PART_TRAIL_NONE,
 		.soft_ver = SOFT_VER_DEFAULT,
 		.soft_ver_compat_level = 1,
