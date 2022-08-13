@@ -1577,6 +1577,49 @@ static struct device_info boards[] = {
 		.last_sysupgrade_partition = "file-system",
 	},
 
+	/** Firmware layout for the Deco S4 v2 */
+	{
+		.id     = "DECO-S4-V2",
+		.vendor = "",
+		.support_list =
+			"SupportList:\n"
+			"{product_name:S4,product_ver:1.0.0,special_id:55530000}\n"
+			"{product_name:S4,product_ver:1.0.0,special_id:45550000}\n"
+			"{product_name:S4,product_ver:1.0.0,special_id:43410000}\n"
+			"{product_name:S4,product_ver:1.0.0,special_id:4A500000}\n"
+			"{product_name:S4,product_ver:1.0.0,special_id:41550000}\n"
+			"{product_name:S4,product_ver:1.0.0,special_id:4B520000}\n"
+			"{product_name:S4,product_ver:2.0.0,special_id:55530000}\n"
+			"{product_name:S4,product_ver:2.0.0,special_id:45550000}\n"
+			"{product_name:S4,product_ver:2.0.0,special_id:43410000}\n"
+			"{product_name:S4,product_ver:2.0.0,special_id:4A500000}\n"
+			"{product_name:S4,product_ver:2.0.0,special_id:41550000}\n"
+			"{product_name:S4,product_ver:2.0.0,special_id:4B520000}\n",
+		.part_trail = 0x00,
+		.soft_ver = SOFT_VER_DEFAULT,
+
+		.partitions = {
+			{"fs-uboot", 0x00000, 0x80000},
+			{"product-info", 0x80000, 0x05000},
+			{"default-mac", 0x85000, 0x01000},
+			{"device-id", 0x86000, 0x01000},
+			{"support-list", 0x87000, 0x10000},
+			{"user-config", 0xa7000, 0x10000},
+			{"device-config", 0xb7000, 0x10000},
+			{"group-info", 0xc7000, 0x10000},
+			{"partition-table", 0xd7000, 0x02000},
+			{"soft-version", 0xd9000, 0x10000},
+			{"profile", 0xe9000, 0x10000},
+			{"default-config", 0xf9000, 0x10000},
+			{"url-sig", 0x1e0000, 0x10000},
+			{"radio", 0x1f0000, 0x10000},
+			{"firmware", 0x200000, 0xe00000},
+			{NULL, 0, 0}
+		},
+		.first_sysupgrade_partition = "os-image",
+		.last_sysupgrade_partition = "file-system",
+	},
+
 	/** Firmware layout for the EAP120 */
 	{
 		.id     = "EAP120",
