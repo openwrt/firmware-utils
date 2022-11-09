@@ -468,6 +468,41 @@ static struct device_info boards[] = {
 		.last_sysupgrade_partition = "support-list",
 	},
 
+	/** Firmware layout for the CPE605V1 */
+	{
+		.id     = "CPE605V1",
+		.vendor = "CPE605(TP-LINK|UN|N150-5):1.0\r\n",
+		.support_list =
+			"SupportList:\r\n"
+			"CPE605(TP-LINK|UN|N150-5|00000000):1.0\r\n"
+			"CPE605(TP-LINK|EU|N150-5|45550000):1.0\r\n"
+			"CPE605(TP-LINK|US|N150-5|55530000):1.0\r\n",
+		.part_trail = 0x00,
+		.soft_ver = SOFT_VER_DEFAULT,
+
+		.partitions = {
+			{"fs-uboot", 0x00000, 0x20000},
+			{"partition-table", 0x20000, 0x02000},
+			{"default-mac", 0x30000, 0x00020},
+			{"serial-number", 0x30100, 0x00020},
+			{"product-info", 0x31100, 0x00100},
+			{"device-info", 0x31400, 0x00400},
+			{"signature", 0x32000, 0x00400},
+			{"device-id", 0x33000, 0x00100},
+			{"firmware", 0x40000, 0x770000},
+			{"soft-version", 0x7b0000, 0x00100},
+			{"support-list", 0x7b1000, 0x01000},
+			{"user-config", 0x7c0000, 0x10000},
+			{"default-config", 0x7d0000, 0x10000},
+			{"log", 0x7e0000, 0x10000},
+			{"radio", 0x7f0000, 0x10000},
+			{NULL, 0, 0}
+		},
+
+		.first_sysupgrade_partition = "os-image",
+		.last_sysupgrade_partition = "support-list",
+	},
+
 	/** Firmware layout for the CPE610V1 */
 	{
 		.id     = "CPE610V1",
