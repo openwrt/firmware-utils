@@ -1612,6 +1612,42 @@ static struct device_info boards[] = {
 		.last_sysupgrade_partition = "file-system",
 	},
 
+	/** Firmware layout for the Deco M4R v4 */
+	{
+		.id     = "DECO-M4R-V4",
+		.vendor = "",
+		.support_list =
+			"SupportList:\n"
+			"{product_name:M4R,product_ver:4.0.0,special_id:55530000}\n"
+			"{product_name:M4R,product_ver:4.0.0,special_id:45550000}\n"
+			"{product_name:M4R,product_ver:4.0.0,special_id:4A500000}\n"
+			"{product_name:M4R,product_ver:4.0.0,special_id:42340000}\n"
+			"{product_name:M4R,product_ver:4.0.0,special_id:5A470000}\n",
+		.part_trail = 0x00,
+		.soft_ver = SOFT_VER_TEXT("soft_ver:1.0.0\n"),
+
+		.partitions = {
+			{"fs-uboot", 0x00000, 0x40000},
+			{"firmware", 0x40000, 0xf60000},
+			{"default-mac", 0xfa0000, 0x00300},
+			{"device-id", 0xfa0300, 0x00100},
+			{"product-info", 0xfa0400, 0x0fc00},
+			{"group-info", 0xfb0000, 0x04000},
+			{"user-config", 0xfb4000, 0x0c000},
+			{"device-config", 0xfc0000, 0x10000},
+			{"default-config", 0xfd0000, 0x10000},
+			{"partition-table", 0xfe0000, 0x00800},
+			{"soft-version", 0xfe0800, 0x00100},
+			{"support-list", 0xfe0900, 0x00200},
+			{"profile", 0xfe0b00, 0x03000},
+			{"extra-para", 0xfe3b00, 0x00100},
+			{"radio", 0xff0000, 0x10000},
+			{NULL, 0, 0}
+		},
+		.first_sysupgrade_partition = "os-image",
+		.last_sysupgrade_partition = "file-system",
+	},
+
 	/** Firmware layout for the Deco S4 v2 */
 	{
 		.id     = "DECO-S4-V2",
@@ -3525,6 +3561,7 @@ static void build_image(const char *output,
 	    strcasecmp(info->id, "ARCHER-C60-V3") == 0 ||
 	    strcasecmp(info->id, "ARCHER-C6U-V1") == 0 ||
 	    strcasecmp(info->id, "ARCHER-C6-V3") == 0 ||
+	    strcasecmp(info->id, "DECO-M4R-V4") == 0 ||
 	    strcasecmp(info->id, "MR70X") == 0 ||
 	    strcasecmp(info->id, "TLWR1043NV5") == 0) {
 		const uint8_t extra_para[2] = {0x01, 0x00};
