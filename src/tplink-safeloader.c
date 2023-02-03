@@ -3679,6 +3679,11 @@ static int add_flash_partition(
 }
 
 /** read the partition table into struct flash_partition_entry */
+enum PARTITION_TABLE_TYPE {
+	PARTITION_TABLE_FWUP,
+	PARTITION_TABLE_FLASH,
+};
+
 static int read_partition_table(
 		FILE *file, long offset,
 		struct flash_partition_entry *entries, size_t max_entries,
@@ -3693,14 +3698,14 @@ static int read_partition_table(
 	/* TODO: search for the partition table */
 
 	switch(type) {
-		case 0:
-			parthdr = fwuphdr;
-			break;
-		case 1:
-			parthdr = flashhdr;
-			break;
-		default:
-			error(1, 0, "Invalid partition table");
+	case PARTITION_TABLE_FWUP:
+		parthdr = fwuphdr;
+		break;
+	case PARTITION_TABLE_FLASH:
+		parthdr = flashhdr;
+		break;
+	default:
+		error(1, 0, "Invalid partition table");
 	}
 
 	if (fseek(file, offset, SEEK_SET) < 0)
@@ -3857,9 +3862,8 @@ static int extract_firmware(const char *input, const char *output_directory)
 
 	input_file = fopen(input, "rb");
 
-	if (read_partition_table(input_file, firmware_offset, entries, 16, 0) != 0) {
+	if (read_partition_table(input_file, firmware_offset, entries, 16, PARTITION_TABLE_FWUP) != 0)
 		error(1, 0, "Error can not read the partition table (fwup-ptn)");
-	}
 
 	for (size_t i = 0; i < max_entries; i++) {
 		if (entries[i].name == NULL &&
@@ -3898,9 +3902,8 @@ static int firmware_info(const char *input)
 
 	fp = fopen(input, "r");
 
-	if (read_partition_table(fp, 0x1014, pointers, MAX_PARTITIONS, 0)) {
+	if (read_partition_table(fp, 0x1014, pointers, MAX_PARTITIONS, PARTITION_TABLE_FWUP))
 		error(1, 0, "Error can not read the partition table (fwup-ptn)");
-	}
 
 	printf("Firmware image partitions:\n");
 	printf("%-8s %-8s %s\n", "base", "size", "name");
@@ -3980,11 +3983,11 @@ static int firmware_info(const char *input)
 
 	e = find_partition(pointers, MAX_PARTITIONS, "partition-table", NULL);
 	if (e) {
+		size_t flash_table_offset = 0x1014 + e->base + 4;
 		struct flash_partition_entry parts[MAX_PARTITIONS] = { };
 
-		if (read_partition_table(fp, 0x1014 + e->base + 4, parts, MAX_PARTITIONS, 1)) {
+		if (read_partition_table(fp, flash_table_offset, parts, MAX_PARTITIONS, PARTITION_TABLE_FLASH))
 			error(1, 0, "Error can not read the partition table (partition)");
-		}
 
 		printf("\n[Partition table]\n");
 		printf("%-8s %-8s %s\n", "base", "size", "name");
@@ -4032,6 +4035,7 @@ static void convert_firmware(const char *input, const char *output)
 	struct flash_partition_entry *fwup_partition_table = NULL;
 	size_t firmware_offset = 0x1014;
 	FILE *input_file, *output_file;
+	size_t flash_table_offset;
 
 	struct stat statbuf;
 
@@ -4060,7 +4064,8 @@ static void convert_firmware(const char *input, const char *output)
 			"partition-table", "Error can not find partition-table partition");
 
 	/* the flash partition table has a 0x00000004 magic haeder */
-	if (read_partition_table(input_file, firmware_offset + fwup_partition_table->base + 4, flash, MAX_PARTITIONS, 1) != 0)
+	flash_table_offset = firmware_offset + fwup_partition_table->base + 4;
+	if (read_partition_table(input_file, flash_table_offset, flash, MAX_PARTITIONS, PARTITION_TABLE_FLASH) != 0)
 		error(1, 0, "Error can not read the partition table (flash)");
 
 	flash_os_image = find_partition(flash, MAX_PARTITIONS,
