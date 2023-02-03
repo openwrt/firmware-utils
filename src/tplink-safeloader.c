@@ -143,6 +143,11 @@ struct __attribute__((__packed__)) soft_version {
  *   UINT32 size, followed by that number of bytes containing (text) data.
  *   Padded with 0xFF. Payload starts at offset 0x1014.
  *
+ * SAFELOADER_TYPE_CLOUD
+ *   Standard preamble with size including preamble length, and checksum.
+ *   Followed by the 'fw-type:Cloud' string and some (unknown) data.
+ *   Payload starts at offset 0x1014.
+ *
  * SAFELOADER_TYPE_QNEW
  *   Reversed order preamble, with (apparent) md5 checksum before the image
  *   size. The size does not include the preamble length.
@@ -153,6 +158,7 @@ struct __attribute__((__packed__)) soft_version {
 enum safeloader_image_type {
 	SAFELOADER_TYPE_DEFAULT,
 	SAFELOADER_TYPE_VENDOR,
+	SAFELOADER_TYPE_CLOUD,
 	SAFELOADER_TYPE_QNEW,
 };
 
@@ -3858,6 +3864,7 @@ static void safeloader_read_partition(FILE *input_file, size_t payload_offset,
 
 static void safeloader_parse_image(FILE *input_file, struct safeloader_image_info *image)
 {
+	static const char *HEADER_ID_CLOUD = "fw-type:Cloud";
 	static const char *HEADER_ID_QNEW = "?NEW";
 
 	char buf[64];
@@ -3872,6 +3879,8 @@ static void safeloader_parse_image(FILE *input_file, struct safeloader_image_inf
 
 	if (memcmp(HEADER_ID_QNEW, &buf[0], strlen(HEADER_ID_QNEW)) == 0)
 		image->type = SAFELOADER_TYPE_QNEW;
+	else if (memcmp(HEADER_ID_CLOUD, &buf[0], strlen(HEADER_ID_CLOUD)) == 0)
+		image->type = SAFELOADER_TYPE_CLOUD;
 	else if (ntohl(*((uint32_t *) &buf[0])) <= SAFELOADER_HEADER_SIZE)
 		image->type = SAFELOADER_TYPE_VENDOR;
 	else
@@ -3880,6 +3889,7 @@ static void safeloader_parse_image(FILE *input_file, struct safeloader_image_inf
 	switch (image->type) {
 	case SAFELOADER_TYPE_DEFAULT:
 	case SAFELOADER_TYPE_VENDOR:
+	case SAFELOADER_TYPE_CLOUD:
 		image->payload_offset = SAFELOADER_PAYLOAD_OFFSET;
 		break;
 	case SAFELOADER_TYPE_QNEW:
