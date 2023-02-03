@@ -127,6 +127,12 @@ struct __attribute__((__packed__)) soft_version {
 	uint32_t compat_level;
 };
 
+/* Internal representation of safeloader image data */
+struct safeloader_image_info {
+	size_t payload_offset;
+	struct flash_partition_entry entries[MAX_PARTITIONS];
+};
+
 #define SAFELOADER_PREAMBLE_SIZE	0x14
 #define SAFELOADER_HEADER_SIZE		0x1000
 #define SAFELOADER_PAYLOAD_OFFSET	(SAFELOADER_PREAMBLE_SIZE + SAFELOADER_HEADER_SIZE)
@@ -3795,6 +3801,46 @@ static int read_partition_table(
 	return 0;
 }
 
+static void safeloader_read_partition(FILE *input_file, size_t payload_offset,
+				      struct flash_partition_entry *entry,
+				      struct image_partition_entry *part)
+{
+	size_t part_size = entry->size;
+	void *part_data = malloc(part_size);
+
+	if (fseek(input_file, payload_offset, SEEK_SET))
+		error(1, errno, "Failed to seek to partition data");
+
+	if (!part_data)
+		error(1, ENOMEM, "Failed to allocate partition data");
+
+	if (fread(part_data, 1, part_size, input_file) < part_size)
+		error(1, errno, "Failed to read partition data");
+
+	part->data = part_data;
+	part->size = part_size;
+	part->name = entry->name;
+}
+
+static void safeloader_parse_image(FILE *input_file, struct safeloader_image_info *image)
+{
+	char buf[64];
+
+	if (!input_file)
+		return;
+
+	fseek(input_file, SAFELOADER_PREAMBLE_SIZE, SEEK_SET);
+
+	if (fread(buf, sizeof(buf), 1, input_file) != 1)
+		error(1, errno, "Can not read image header");
+
+	image->payload_offset = SAFELOADER_PAYLOAD_OFFSET;
+
+	/* Parse image partition table */
+	read_partition_table(input_file, image->payload_offset, &image->entries[0],
+			     MAX_PARTITIONS, PARTITION_TABLE_FWUP);
+}
+
 static void write_partition(
 		FILE *input_file,
 		size_t firmware_offset,
@@ -3844,12 +3890,9 @@ static int extract_firmware_partition(FILE *input_file, size_t firmware_offset, 
 /** extract all partitions from the firmware file */
 static int extract_firmware(const char *input, const char *output_directory)
 {
-	struct flash_partition_entry entries[16] = { 0 };
-	size_t max_entries = 16;
-	size_t firmware_offset = SAFELOADER_PAYLOAD_OFFSET;
-	FILE *input_file;
-
+	struct safeloader_image_info info = {};
 	struct stat statbuf;
+	FILE *input_file;
 
 	/* check input file */
 	if (stat(input, &statbuf)) {
@@ -3866,12 +3909,10 @@ static int extract_firmware(const char *input, const char *output_directory)
 	}
 
 	input_file = fopen(input, "rb");
+	safeloader_parse_image(input_file, &info);
 
-	if (read_partition_table(input_file, firmware_offset, entries, 16, PARTITION_TABLE_FWUP) != 0)
-		error(1, 0, "Error can not read the partition table (fwup-ptn)");
-
-	for (size_t i = 0; i < max_entries && entries[i].name; i++)
-		extract_firmware_partition(input_file, firmware_offset, &entries[i], output_directory);
+	for (size_t i = 0; i < MAX_PARTITIONS && info.entries[i].name; i++)
+		extract_firmware_partition(input_file, info.payload_offset, &info.entries[i], output_directory);
 
 	return 0;
 }
@@ -3894,39 +3935,33 @@ static struct flash_partition_entry *find_partition(
 
 static int firmware_info(const char *input)
 {
-	struct flash_partition_entry pointers[MAX_PARTITIONS] = { };
+	struct safeloader_image_info info = {};
+	struct image_partition_entry part = {};
 	struct flash_partition_entry *e;
-	FILE *fp;
-	int i;
+	FILE *input_file;
 
-	fp = fopen(input, "r");
+	input_file = fopen(input, "rb");
 
-	if (read_partition_table(fp, SAFELOADER_PAYLOAD_OFFSET, pointers, MAX_PARTITIONS, PARTITION_TABLE_FWUP))
-		error(1, 0, "Error can not read the partition table (fwup-ptn)");
+	safeloader_parse_image(input_file, &info);
 
 	printf("Firmware image partitions:\n");
 	printf("%-8s %-8s %s\n", "base", "size", "name");
 
-	e = &pointers[0];
-	for (i = 0; i < MAX_PARTITIONS && e->name; i++, e++)
+	e = &info.entries[0];
+	for (unsigned int i = 0; i < MAX_PARTITIONS && e->name; i++, e++)
 		printf("%08x %08x %s\n", e->base, e->size, e->name);
 
-	e = find_partition(pointers, MAX_PARTITIONS, "soft-version", NULL);
+	e = find_partition(&info.entries[0], MAX_PARTITIONS, "soft-version", NULL);
 	if (e) {
-		size_t data_len = e->size - sizeof(struct meta_header);
-		char *buf = malloc(data_len);
 		struct soft_version *s;
+		unsigned int ascii_len;
+		const uint8_t *buf;
+		size_t data_len;
 		bool isstr;
-		int i;
 
-		if (!buf)
-			error(1, errno, "Failed to alloc buffer");
-
-		if (fseek(fp, SAFELOADER_PAYLOAD_OFFSET + e->base + sizeof(struct meta_header), SEEK_SET))
-			error(1, errno, "Can not seek in the firmware");
-
-		if (fread(buf, data_len, 1, fp) != 1)
-			error(1, errno, "Can not read fwup-ptn data from the firmware");
+		safeloader_read_partition(input_file, info.payload_offset + e->base, e, &part);
+		data_len = ntohl(((struct meta_header *) part.data)->length);
+		buf = part.data + sizeof(struct meta_header);
 
 		/* Check for (null-terminated) string */
 		ascii_len = 0;
@@ -3937,10 +3972,10 @@ static int firmware_info(const char *input)
 
 		printf("\n[Software version]\n");
 		if (isstr) {
-			fwrite(buf, strnlen(buf, data_len), 1, stdout);
+			fwrite(buf, strnlen((const char *) buf, data_len), 1, stdout);
 			putchar('\n');
 		} else if (data_len >= offsetof(struct soft_version, rev)) {
-			s = (struct soft_version *)buf;
+			s = (struct soft_version *) buf;
 
 			printf("Version: %d.%d.%d\n", s->version_major, s->version_minor, s->version_patch);
 			printf("Date: %02x%02x-%02x-%02x\n", s->year_hi, s->year_lo, s->month, s->day);
@@ -3949,48 +3984,40 @@ static int firmware_info(const char *input)
 			printf("Failed to parse data\n");
 		}
 
-		free(buf);
+		free_image_partition(&part);
 	}
 
-	e = find_partition(pointers, MAX_PARTITIONS, "support-list", NULL);
+	e = find_partition(&info.entries[0], MAX_PARTITIONS, "support-list", NULL);
 	if (e) {
-		char buf[128];
-		size_t length;
-		size_t bytes;
-		size_t max_length = sizeof(buf) - 1;
+		size_t data_len;
 
-		if (fseek(fp, SAFELOADER_PAYLOAD_OFFSET + e->base + sizeof(struct meta_header), SEEK_SET))
-			error(1, errno, "Can not seek in the firmware");
+		safeloader_read_partition(input_file, info.payload_offset + e->base, e, &part);
+		data_len = ntohl(((struct meta_header *) part.data)->length);
 
 		printf("\n[Support list]\n");
-		for (length = e->size - sizeof(struct meta_header); length; length -= bytes) {
-			bytes = fread(buf, 1, length > max_length ? max_length: length, fp);
-			if (bytes <= 0)
-				error(1, errno, "Can not read fwup-ptn data from the firmware");
+		fwrite(part.data + sizeof(struct meta_header), data_len, 1, stdout);
+		printf("\n");
 
-			buf[bytes] = '\0';
-			printf(buf);
-		}
-        printf("\n");
+		free_image_partition(&part);
 	}
 
-	e = find_partition(pointers, MAX_PARTITIONS, "partition-table", NULL);
+	e = find_partition(&info.entries[0], MAX_PARTITIONS, "partition-table", NULL);
 	if (e) {
-		size_t flash_table_offset = SAFELOADER_PAYLOAD_OFFSET + e->base + 4;
-		struct flash_partition_entry parts[MAX_PARTITIONS] = { };
+		size_t flash_table_offset = info.payload_offset + e->base + 4;
+		struct flash_partition_entry parts[MAX_PARTITIONS] = {};
 
-		if (read_partition_table(fp, flash_table_offset, parts, MAX_PARTITIONS, PARTITION_TABLE_FLASH))
+		if (read_partition_table(input_file, flash_table_offset, parts, MAX_PARTITIONS, PARTITION_TABLE_FLASH))
 			error(1, 0, "Error can not read the partition table (partition)");
 
 		printf("\n[Partition table]\n");
 		printf("%-8s %-8s %s\n", "base", "size", "name");
 
 		e = &parts[0];
-		for (i = 0; i < MAX_PARTITIONS && e->name; i++, e++)
+		for (unsigned int i = 0; i < MAX_PARTITIONS && e->name; i++, e++)
 			printf("%08x %08x %s\n", e->base, e->size, e->name);
 	}
 
-	fclose(fp);
+	fclose(input_file);
 
 	return 0;
 }
@@ -4017,16 +4044,17 @@ static void write_ff(FILE *output_file, size_t size)
 
 static void convert_firmware(const char *input, const char *output)
 {
-	struct flash_partition_entry fwup[MAX_PARTITIONS] = { 0 };
-	struct flash_partition_entry flash[MAX_PARTITIONS] = { 0 };
-	struct flash_partition_entry *fwup_os_image = NULL, *fwup_file_system = NULL;
-	struct flash_partition_entry *flash_os_image = NULL, *flash_file_system = NULL;
-	struct flash_partition_entry *fwup_partition_table = NULL;
-	size_t firmware_offset = SAFELOADER_PAYLOAD_OFFSET;
-	FILE *input_file, *output_file;
+	struct flash_partition_entry flash[MAX_PARTITIONS] = {};
+	struct flash_partition_entry *fwup_partition_table;
+	struct flash_partition_entry *flash_file_system;
+	struct flash_partition_entry *fwup_file_system;
+	struct flash_partition_entry *flash_os_image;
+	struct flash_partition_entry *fwup_os_image;
+	struct safeloader_image_info info = {};
 	size_t flash_table_offset;
-
 	struct stat statbuf;
+	FILE *output_file;
+	FILE *input_file;
 
 	/* check input file */
 	if (stat(input, &statbuf)) {
@@ -4041,19 +4069,18 @@ static void convert_firmware(const char *input, const char *output)
 	if (!output_file)
 		error(1, 0, "Can not open output firmware %s", output);
 
-	if (read_partition_table(input_file, firmware_offset, fwup, MAX_PARTITIONS, 0) != 0) {
-		error(1, 0, "Error can not read the partition table (fwup-ptn)");
-	}
+	input_file = fopen(input, "rb");
+	safeloader_parse_image(input_file, &info);
 
-	fwup_os_image = find_partition(fwup, MAX_PARTITIONS,
+	fwup_os_image = find_partition(info.entries, MAX_PARTITIONS,
 			"os-image", "Error can not find os-image partition (fwup)");
-	fwup_file_system = find_partition(fwup, MAX_PARTITIONS,
+	fwup_file_system = find_partition(info.entries, MAX_PARTITIONS,
 			"file-system", "Error can not find file-system partition (fwup)");
-	fwup_partition_table = find_partition(fwup, MAX_PARTITIONS,
+	fwup_partition_table = find_partition(info.entries, MAX_PARTITIONS,
 			"partition-table", "Error can not find partition-table partition");
 
 	/* the flash partition table has a 0x00000004 magic haeder */
-	flash_table_offset = firmware_offset + fwup_partition_table->base + 4;
+	flash_table_offset = info.payload_offset + fwup_partition_table->base + 4;
 	if (read_partition_table(input_file, flash_table_offset, flash, MAX_PARTITIONS, PARTITION_TABLE_FLASH) != 0)
 		error(1, 0, "Error can not read the partition table (flash)");
 
@@ -4063,12 +4090,12 @@ static void convert_firmware(const char *input, const char *output)
 			"file-system", "Error can not find file-system partition (flash)");
 
 	/* write os_image to 0x0 */
-	write_partition(input_file, firmware_offset, fwup_os_image, output_file);
+	write_partition(input_file, info.payload_offset, fwup_os_image, output_file);
 	write_ff(output_file, flash_os_image->size - fwup_os_image->size);
 
 	/* write file-system behind os_image */
 	fseek(output_file, flash_file_system->base - flash_os_image->base, SEEK_SET);
-	write_partition(input_file, firmware_offset, fwup_file_system, output_file);
+	write_partition(input_file, info.payload_offset, fwup_file_system, output_file);
 
 	fclose(output_file);
 	fclose(input_file);
