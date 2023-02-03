@@ -3928,18 +3928,16 @@ static int firmware_info(const char *input)
 		if (fread(buf, data_len, 1, fp) != 1)
 			error(1, errno, "Can not read fwup-ptn data from the firmware");
 
-		/* Check for string ignoring padding character */
-		isstr = true;
-		for (i = 0; i < data_len - 1; i++) {
-			if (!isascii(buf[i])) {
-				isstr = false;
-				break;
-			}
-		}
+		/* Check for (null-terminated) string */
+		ascii_len = 0;
+		while (ascii_len < data_len && isascii(buf[ascii_len]))
+			ascii_len++;
+
+		isstr = ascii_len == data_len;
 
 		printf("\n[Software version]\n");
 		if (isstr) {
-			fwrite(buf, data_len, 1, stdout);
+			fwrite(buf, strnlen(buf, data_len), 1, stdout);
 			putchar('\n');
 		} else if (data_len >= offsetof(struct soft_version, rev)) {
 			s = (struct soft_version *)buf;
