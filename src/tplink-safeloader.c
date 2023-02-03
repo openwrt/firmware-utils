@@ -127,8 +127,30 @@ struct __attribute__((__packed__)) soft_version {
 	uint32_t compat_level;
 };
 
+/*
+ * Safeloader image type
+ *   Safeloader images contain a 0x14 byte preamble with image size (big endian
+ *   UINT32) and md5 checksum (16 bytes).
+ *
+ * SAFEFLOADER_TYPE_DEFAULT
+ *   Standard preamble with size including preamble length, and checksum.
+ *   Header of 0x1000 bytes, contents of which are not specified.
+ *   Payload starts at offset 0x1014.
+ *
+ * SAFELOADER_TYPE_VENDOR
+ *   Standard preamble with size including preamble length, and checksum.
+ *   Header contains up to 0x1000 bytes of vendor data, starting with a big endian
+ *   UINT32 size, followed by that number of bytes containing (text) data.
+ *   Padded with 0xFF. Payload starts at offset 0x1014.
+ */
+enum safeloader_image_type {
+	SAFELOADER_TYPE_DEFAULT,
+	SAFELOADER_TYPE_VENDOR,
+};
+
 /* Internal representation of safeloader image data */
 struct safeloader_image_info {
+	enum safeloader_image_type type;
 	size_t payload_offset;
 	struct flash_partition_entry entries[MAX_PARTITIONS];
 };
@@ -3834,6 +3856,11 @@ static void safeloader_parse_image(FILE *input_file, struct safeloader_image_inf
 	if (fread(buf, sizeof(buf), 1, input_file) != 1)
 		error(1, errno, "Can not read image header");
 
+	if (ntohl(*((uint32_t *) &buf[0])) <= SAFELOADER_HEADER_SIZE)
+		image->type = SAFELOADER_TYPE_VENDOR;
+	else
+		image->type = SAFELOADER_TYPE_DEFAULT;
+
 	image->payload_offset = SAFELOADER_PAYLOAD_OFFSET;
 
 	/* Parse image partition table */
@@ -3943,6 +3970,21 @@ static int firmware_info(const char *input)
 	input_file = fopen(input, "rb");
 
 	safeloader_parse_image(input_file, &info);
+
+	if (info.type == SAFELOADER_TYPE_VENDOR) {
+		char buf[SAFELOADER_HEADER_SIZE] = {};
+		uint32_t vendor_size;
+
+		fseek(input_file, SAFELOADER_PREAMBLE_SIZE, SEEK_SET);
+		fread(&vendor_size, sizeof(uint32_t), 1, input_file);
+
+		vendor_size = ntohl(vendor_size);
+		fread(buf, vendor_size, 1, input_file);
+
+		printf("Firmware vendor string:\n");
+		fwrite(buf, strnlen(buf, vendor_size), 1, stdout);
+		printf("\n");
+	}
 
 	printf("Firmware image partitions:\n");
 	printf("%-8s %-8s %s\n", "base", "size", "name");
