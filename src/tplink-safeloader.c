@@ -4071,7 +4071,6 @@ static void convert_firmware(const char *input, const char *output)
 	/* write file-system behind os_image */
 	fseek(output_file, flash_file_system->base - flash_os_image->base, SEEK_SET);
 	write_partition(input_file, firmware_offset, fwup_file_system, output_file);
-	write_ff(output_file, flash_file_system->size - fwup_file_system->size);
 
 	fclose(output_file);
 	fclose(input_file);
