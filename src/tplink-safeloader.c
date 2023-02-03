@@ -127,6 +127,11 @@ struct __attribute__((__packed__)) soft_version {
 	uint32_t compat_level;
 };
 
+#define SAFELOADER_PREAMBLE_SIZE	0x14
+#define SAFELOADER_HEADER_SIZE		0x1000
+#define SAFELOADER_PAYLOAD_OFFSET	(SAFELOADER_PREAMBLE_SIZE + SAFELOADER_HEADER_SIZE)
+
+#define SAFELOADER_PAYLOAD_TABLE_SIZE	0x800
 
 static const uint8_t jffs2_eof_mark[4] = {0xde, 0xad, 0xc0, 0xde};
 
@@ -3184,7 +3189,7 @@ static void set_source_date_epoch() {
 /** Generates the partition-table partition */
 static struct image_partition_entry make_partition_table(const struct device_info *p)
 {
-	struct image_partition_entry entry = alloc_image_partition(p->partition_names.partition_table, 0x800);
+	struct image_partition_entry entry = alloc_image_partition(p->partition_names.partition_table, SAFELOADER_PAYLOAD_TABLE_SIZE);
 
 	char *s = (char *)entry.data, *end = (char *)(s+entry.size);
 
@@ -3347,9 +3352,9 @@ static struct image_partition_entry read_file(const char *part_name, const char 
 */
 static void put_partitions(uint8_t *buffer, const struct flash_partition_entry *flash_parts, const struct image_partition_entry *parts) {
 	size_t i, j;
-	char *image_pt = (char *)buffer, *end = image_pt + 0x800;
+	char *image_pt = (char *)buffer, *end = image_pt + SAFELOADER_PAYLOAD_TABLE_SIZE;
 
-	size_t base = 0x800;
+	size_t base = SAFELOADER_PAYLOAD_TABLE_SIZE;
 	for (i = 0; parts[i].name; i++) {
 		for (j = 0; flash_parts[j].name; j++) {
 			if (!strcmp(flash_parts[j].name, parts[i].name)) {
@@ -3402,7 +3407,7 @@ static void put_md5(uint8_t *md5, uint8_t *buffer, unsigned int len) {
      1814-xxxx    Firmware partitions
 */
 static void * generate_factory_image(struct device_info *info, const struct image_partition_entry *parts, size_t *len) {
-	*len = 0x1814;
+	*len = SAFELOADER_PAYLOAD_OFFSET + SAFELOADER_PAYLOAD_TABLE_SIZE;
 
 	size_t i;
 	for (i = 0; parts[i].name; i++)
@@ -3417,12 +3422,12 @@ static void * generate_factory_image(struct device_info *info, const struct imag
 
 	if (info->vendor) {
 		size_t vendor_len = strlen(info->vendor);
-		put32(image+0x14, vendor_len);
-		memcpy(image+0x18, info->vendor, vendor_len);
+		put32(image + SAFELOADER_PREAMBLE_SIZE, vendor_len);
+		memcpy(image + SAFELOADER_PREAMBLE_SIZE + 0x4, info->vendor, vendor_len);
 	}
 
-	put_partitions(image + 0x1014, info->partitions, parts);
-	put_md5(image+0x04, image+0x14, *len-0x14);
+	put_partitions(image + SAFELOADER_PAYLOAD_OFFSET, info->partitions, parts);
+	put_md5(image + 0x04, image + SAFELOADER_PREAMBLE_SIZE, *len - SAFELOADER_PREAMBLE_SIZE);
 
 	return image;
 }
@@ -3689,7 +3694,7 @@ static int read_partition_table(
 		struct flash_partition_entry *entries, size_t max_entries,
 		int type)
 {
-	char buf[2048];
+	char buf[SAFELOADER_PAYLOAD_TABLE_SIZE];
 	char *ptr, *end;
 	const char *parthdr = NULL;
 	const char *fwuphdr = "fwup-ptn";
@@ -3711,10 +3716,10 @@ static int read_partition_table(
 	if (fseek(file, offset, SEEK_SET) < 0)
 		error(1, errno, "Can not seek in the firmware");
 
-	if (fread(buf, 2048, 1, file) != 1)
+	if (fread(buf, sizeof(buf), 1, file) != 1)
 		error(1, errno, "Can not read fwup-ptn from the firmware");
 
-	buf[2047] = '\0';
+	buf[sizeof(buf) - 1] = '\0';
 
 	/* look for the partition header */
 	if (memcmp(buf, parthdr, strlen(parthdr)) != 0) {
@@ -3841,7 +3846,7 @@ static int extract_firmware(const char *input, const char *output_directory)
 {
 	struct flash_partition_entry entries[16] = { 0 };
 	size_t max_entries = 16;
-	size_t firmware_offset = 0x1014;
+	size_t firmware_offset = SAFELOADER_PAYLOAD_OFFSET;
 	FILE *input_file;
 
 	struct stat statbuf;
@@ -3902,7 +3907,7 @@ static int firmware_info(const char *input)
 
 	fp = fopen(input, "r");
 
-	if (read_partition_table(fp, 0x1014, pointers, MAX_PARTITIONS, PARTITION_TABLE_FWUP))
+	if (read_partition_table(fp, SAFELOADER_PAYLOAD_OFFSET, pointers, MAX_PARTITIONS, PARTITION_TABLE_FWUP))
 		error(1, 0, "Error can not read the partition table (fwup-ptn)");
 
 	printf("Firmware image partitions:\n");
@@ -3927,7 +3932,7 @@ static int firmware_info(const char *input)
 		if (!buf)
 			error(1, errno, "Failed to alloc buffer");
 
-		if (fseek(fp, 0x1014 + e->base + sizeof(struct meta_header), SEEK_SET))
+		if (fseek(fp, SAFELOADER_PAYLOAD_OFFSET + e->base + sizeof(struct meta_header), SEEK_SET))
 			error(1, errno, "Can not seek in the firmware");
 
 		if (fread(buf, data_len, 1, fp) != 1)
@@ -3966,7 +3971,7 @@ static int firmware_info(const char *input)
 		size_t bytes;
 		size_t max_length = sizeof(buf) - 1;
 
-		if (fseek(fp, 0x1014 + e->base + sizeof(struct meta_header), SEEK_SET))
+		if (fseek(fp, SAFELOADER_PAYLOAD_OFFSET + e->base + sizeof(struct meta_header), SEEK_SET))
 			error(1, errno, "Can not seek in the firmware");
 
 		printf("\n[Support list]\n");
@@ -3983,7 +3988,7 @@ static int firmware_info(const char *input)
 
 	e = find_partition(pointers, MAX_PARTITIONS, "partition-table", NULL);
 	if (e) {
-		size_t flash_table_offset = 0x1014 + e->base + 4;
+		size_t flash_table_offset = SAFELOADER_PAYLOAD_OFFSET + e->base + 4;
 		struct flash_partition_entry parts[MAX_PARTITIONS] = { };
 
 		if (read_partition_table(fp, flash_table_offset, parts, MAX_PARTITIONS, PARTITION_TABLE_FLASH))
@@ -4033,7 +4038,7 @@ static void convert_firmware(const char *input, const char *output)
 	struct flash_partition_entry *fwup_os_image = NULL, *fwup_file_system = NULL;
 	struct flash_partition_entry *flash_os_image = NULL, *flash_file_system = NULL;
 	struct flash_partition_entry *fwup_partition_table = NULL;
-	size_t firmware_offset = 0x1014;
+	size_t firmware_offset = SAFELOADER_PAYLOAD_OFFSET;
 	FILE *input_file, *output_file;
 	size_t flash_table_offset;
 
