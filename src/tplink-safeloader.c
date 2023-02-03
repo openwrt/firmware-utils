@@ -3156,8 +3156,15 @@ static void set_partition_names(struct device_info *info)
 }
 
 /** Frees an image partition */
-static void free_image_partition(struct image_partition_entry entry) {
-	free(entry.data);
+static void free_image_partition(struct image_partition_entry *entry)
+{
+	void *data = entry->data;
+
+	entry->name = NULL;
+	entry->size = 0;
+	entry->data = NULL;
+
+	free(data);
 }
 
 static time_t source_date_epoch = -1;
@@ -3598,7 +3605,7 @@ static void build_image(const char *output,
 	free(image);
 
 	for (i = 0; parts[i].name; i++)
-		free_image_partition(parts[i]);
+		free_image_partition(&parts[i]);
 }
 
 /** Usage output */
