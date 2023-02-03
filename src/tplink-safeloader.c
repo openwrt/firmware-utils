@@ -142,10 +142,18 @@ struct __attribute__((__packed__)) soft_version {
  *   Header contains up to 0x1000 bytes of vendor data, starting with a big endian
  *   UINT32 size, followed by that number of bytes containing (text) data.
  *   Padded with 0xFF. Payload starts at offset 0x1014.
+ *
+ * SAFELOADER_TYPE_QNEW
+ *   Reversed order preamble, with (apparent) md5 checksum before the image
+ *   size. The size does not include the preamble length.
+ *   Header starts with 0x3C bytes, starting with the string '?NEW' (format not
+ *   understood). Then another 0x1000 bytes follow, with the data payload
+ *   starting at 0x1050.
  */
 enum safeloader_image_type {
 	SAFELOADER_TYPE_DEFAULT,
 	SAFELOADER_TYPE_VENDOR,
+	SAFELOADER_TYPE_QNEW,
 };
 
 /* Internal representation of safeloader image data */
@@ -158,6 +166,10 @@ struct safeloader_image_info {
 #define SAFELOADER_PREAMBLE_SIZE	0x14
 #define SAFELOADER_HEADER_SIZE		0x1000
 #define SAFELOADER_PAYLOAD_OFFSET	(SAFELOADER_PREAMBLE_SIZE + SAFELOADER_HEADER_SIZE)
+
+#define SAFELOADER_QNEW_HEADER_SIZE	0x3C
+#define SAFELOADER_QNEW_PAYLOAD_OFFSET	\
+	(SAFELOADER_PREAMBLE_SIZE + SAFELOADER_QNEW_HEADER_SIZE + SAFELOADER_HEADER_SIZE)
 
 #define SAFELOADER_PAYLOAD_TABLE_SIZE	0x800
 
@@ -3846,6 +3858,8 @@ static void safeloader_read_partition(FILE *input_file, size_t payload_offset,
 
 static void safeloader_parse_image(FILE *input_file, struct safeloader_image_info *image)
 {
+	static const char *HEADER_ID_QNEW = "?NEW";
+
 	char buf[64];
 
 	if (!input_file)
@@ -3856,12 +3870,22 @@ static void safeloader_parse_image(FILE *input_file, struct safeloader_image_inf
 	if (fread(buf, sizeof(buf), 1, input_file) != 1)
 		error(1, errno, "Can not read image header");
 
-	if (ntohl(*((uint32_t *) &buf[0])) <= SAFELOADER_HEADER_SIZE)
+	if (memcmp(HEADER_ID_QNEW, &buf[0], strlen(HEADER_ID_QNEW)) == 0)
+		image->type = SAFELOADER_TYPE_QNEW;
+	else if (ntohl(*((uint32_t *) &buf[0])) <= SAFELOADER_HEADER_SIZE)
 		image->type = SAFELOADER_TYPE_VENDOR;
 	else
 		image->type = SAFELOADER_TYPE_DEFAULT;
 
-	image->payload_offset = SAFELOADER_PAYLOAD_OFFSET;
+	switch (image->type) {
+	case SAFELOADER_TYPE_DEFAULT:
+	case SAFELOADER_TYPE_VENDOR:
+		image->payload_offset = SAFELOADER_PAYLOAD_OFFSET;
+		break;
+	case SAFELOADER_TYPE_QNEW:
+		image->payload_offset = SAFELOADER_QNEW_PAYLOAD_OFFSET;
+		break;
+	}
 
 	/* Parse image partition table */
 	read_partition_table(input_file, image->payload_offset, &image->entries[0],
