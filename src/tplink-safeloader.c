@@ -3870,14 +3870,8 @@ static int extract_firmware(const char *input, const char *output_directory)
 	if (read_partition_table(input_file, firmware_offset, entries, 16, PARTITION_TABLE_FWUP) != 0)
 		error(1, 0, "Error can not read the partition table (fwup-ptn)");
 
-	for (size_t i = 0; i < max_entries; i++) {
-		if (entries[i].name == NULL &&
-				entries[i].base == 0 &&
-				entries[i].size == 0)
-			continue;
-
+	for (size_t i = 0; i < max_entries && entries[i].name; i++)
 		extract_firmware_partition(input_file, firmware_offset, &entries[i], output_directory);
-	}
 
 	return 0;
 }
@@ -3912,14 +3906,10 @@ static int firmware_info(const char *input)
 
 	printf("Firmware image partitions:\n");
 	printf("%-8s %-8s %s\n", "base", "size", "name");
-	for (i = 0; i < MAX_PARTITIONS; i++) {
-		e = &pointers[i];
 
-		if (!e->name && !e->base && !e->size)
-			continue;
-
-		printf("%08x %08x %s\n", e->base, e->size, e->name ? e->name : "");
-	}
+	e = &pointers[0];
+	for (i = 0; i < MAX_PARTITIONS && e->name; i++, e++)
+		printf("%08x %08x %s\n", e->base, e->size, e->name);
 
 	e = find_partition(pointers, MAX_PARTITIONS, "soft-version", NULL);
 	if (e) {
@@ -3996,14 +3986,10 @@ static int firmware_info(const char *input)
 
 		printf("\n[Partition table]\n");
 		printf("%-8s %-8s %s\n", "base", "size", "name");
-		for (i = 0; i < MAX_PARTITIONS; i++) {
-			e = &parts[i];
 
-			if (!e->name && !e->base && !e->size)
-				continue;
-
-			printf("%08x %08x %s\n", e->base, e->size, e->name ? e->name : "");
-		}
+		e = &parts[0];
+		for (i = 0; i < MAX_PARTITIONS && e->name; i++, e++)
+			printf("%08x %08x %s\n", e->base, e->size, e->name);
 	}
 
 	fclose(fp);
