@@ -356,6 +356,8 @@ int main(int argc, char *argv[])
 {
 	int ret = EXIT_FAILURE;
 
+	progname = basename(argv[0]);
+
 	while ( 1 ) {
 		int c;
 
