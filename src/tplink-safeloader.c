@@ -1009,9 +1009,9 @@ static struct device_info boards[] = {
 			{"logo", 0xfde000, 0x02000},
 			{"partition-table", 0xfe0000, 0x00800},
 			{"soft-version", 0xfe0800, 0x00100},
-			{"support-list", 0xfe0900, 0x00200},
-			{"profile", 0xfe0b00, 0x03000},
-			{"extra-para", 0xfe3b00, 0x00100},
+			{"support-list", 0xfe0900, 0x00400},
+			{"profile", 0xfe0d00, 0x03000},
+			{"extra-para", 0xfe3d00, 0x00100},
 			{"radio", 0xff0000, 0x10000},
 			{NULL, 0, 0}
 		},
