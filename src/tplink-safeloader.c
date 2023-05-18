@@ -986,6 +986,7 @@ static struct device_info boards[] = {
 			"{product_name:Archer AX23,product_ver:1.0.0,special_id:55530000}\n"
 			"{product_name:Archer AX23,product_ver:1.20,special_id:45550000}\n"
 			"{product_name:Archer AX23,product_ver:1.20,special_id:4A500000}\n"
+			"{product_name:Archer AX23,product_ver:1.20,special_id:52550000}\n"
 			"{product_name:Archer AX23,product_ver:1.20,special_id:55530000}\n"
 			"{product_name:Archer AX1800,product_ver:1.20,special_id:45550000}\n"
 			"{product_name:Archer AX1800,product_ver:1.20,special_id:52550000}\n",
