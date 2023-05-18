@@ -978,16 +978,16 @@ static struct device_info boards[] = {
 		.support_list =
 			"SupportList:\n"
 			"{product_name:Archer AX23,product_ver:1.0,special_id:45550000}\n"
-			"{product_name:Archer AX23,product_ver:1.20,special_id:45550000}\n"
 			"{product_name:Archer AX23,product_ver:1.0,special_id:4A500000}\n"
-			"{product_name:Archer AX23,product_ver:1.20,special_id:4A500000}\n"
 			"{product_name:Archer AX23,product_ver:1.0,special_id:4B520000}\n"
 			"{product_name:Archer AX23,product_ver:1.0,special_id:52550000}\n"
-			"{product_name:Archer AX1800,product_ver:1.20,special_id:52550000}\n"
-			"{product_name:Archer AX23,product_ver:1.0.0,special_id:55530000}\n"
-			"{product_name:Archer AX23,product_ver:1.20,special_id:55530000}\n"
 			"{product_name:Archer AX23,product_ver:1.0.0,special_id:43410000}\n"
-			"{product_name:Archer AX23,product_ver:1.0.0,special_id:54570000}\n",
+			"{product_name:Archer AX23,product_ver:1.0.0,special_id:54570000}\n"
+			"{product_name:Archer AX23,product_ver:1.0.0,special_id:55530000}\n"
+			"{product_name:Archer AX23,product_ver:1.20,special_id:45550000}\n"
+			"{product_name:Archer AX23,product_ver:1.20,special_id:4A500000}\n"
+			"{product_name:Archer AX23,product_ver:1.20,special_id:55530000}\n"
+			"{product_name:Archer AX1800,product_ver:1.20,special_id:52550000}\n",
 		.part_trail = 0x00,
 		.soft_ver = SOFT_VER_TEXT("soft_ver:3.0.3\n"),
 
