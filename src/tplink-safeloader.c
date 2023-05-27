@@ -2309,7 +2309,8 @@ static struct device_info boards[] = {
 			"SupportList:\n"
 			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:41550000}\n"
 			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:45550000}\n"
-			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:55530000}\n",
+			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:55530000}\n"
+			"{product_name:TL-WPA8635P,product_ver:3.0.0,special_id:46520000}\n",
 		.part_trail = 0x00,
 		.soft_ver = SOFT_VER_DEFAULT,
 
@@ -2323,8 +2324,8 @@ static struct device_info boards[] = {
 			{"default-region", 0x732300, 0x00010},
 			{"product-info", 0x732400, 0x00200},
 			{"extra-para", 0x732600, 0x00200},
-			{"soft-version", 0x732800, 0x00200},
-			{"support-list", 0x732a00, 0x00100},
+			{"soft-version", 0x732800, 0x00100},
+			{"support-list", 0x732900, 0x00200},
 			{"profile", 0x732b00, 0x00100},
 			{"default-config", 0x732c00, 0x00800},
 			{"plc-type", 0x733400, 0x00020},
