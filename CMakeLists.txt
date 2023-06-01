@@ -10,7 +10,7 @@ IF(NOT ZLIB_FOUND)
 ENDIF()
 
 IF(NOT OPENSSL_FOUND)
-  MESSAGE(FATAL_ERROR "Unable to find OpenSSL librry.")
+  MESSAGE(FATAL_ERROR "Unable to find OpenSSL library.")
 ENDIF()
 
 ADD_DEFINITIONS(-Wall -Wno-unused-parameter)
