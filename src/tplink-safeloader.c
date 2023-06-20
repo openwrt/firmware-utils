@@ -407,6 +407,7 @@ static struct device_info boards[] = {
 			"CPE510(TP-LINK|UN|N300-5):1.1\r\n"
 			"CPE510(TP-LINK|UN|N300-5):1.1\r\n"
 			"CPE510(TP-LINK|US|N300-5):1.1\r\n"
+			"CPE510(TP-LINK|CA|N300-5):1.1\r\n"
 			"CPE510(TP-LINK|EU|N300-5):1.1\r\n"
 			"CPE520(TP-LINK|UN|N300-5):1.1\r\n"
 			"CPE520(TP-LINK|US|N300-5):1.1\r\n"
