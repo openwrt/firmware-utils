@@ -2426,7 +2426,9 @@ static struct device_info boards[] = {
 			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:41550000}\n"
 			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:45550000}\n"
 			"{product_name:TL-WPA8631P,product_ver:3.0.0,special_id:55530000}\n"
+			"{product_name:TL-WPA8631P,product_ver:4.0.0,special_id:41550000}\n"
 			"{product_name:TL-WPA8631P,product_ver:4.0.0,special_id:45550000}\n"
+			"{product_name:TL-WPA8631P,product_ver:4.0.0,special_id:55530000}\n"
 			"{product_name:TL-WPA8635P,product_ver:3.0.0,special_id:46520000}\n",
 		.part_trail = 0x00,
 		.soft_ver = SOFT_VER_DEFAULT,
