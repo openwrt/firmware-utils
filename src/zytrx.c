@@ -93,6 +93,7 @@ static struct board_t {
 } boards[] = {
 	{ "MT7621A", "NR7101", 0x07010001 },
 	{ "MT7621A", "LTE3301-PLUS", 0x03030001  },
+	{ "MT7621A", "LTE5398-M904", 0x05030908 },
 	{}
 };
 
