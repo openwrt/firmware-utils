@@ -1,0 +1,344 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+
+const unsigned char key1[] =
+	"\x35\x87\x90\x03\x45\x19\xf8\xc8\x23\x5d\xb6\x49\x28\x39\xa7\x3f";
+
+const unsigned char key2[] =
+	"\xc8\xd3\x2f\x40\x9c\xac\xb3\x47\xc8\xd2\x6f\xdc\xb9\x09\x0b\x3c";
+
+const unsigned char iv[] =
+	"\x98\xc9\xd8\xf0\x13\x3d\x06\x95\xe2\xa7\x09\xc8\xb6\x96\x82\xd4";
+
+const unsigned char salt[] =
+	"\x67\xc6\x69\x73\x51\xff\x4a\xec\x29\xcd\xba\xab\xf2\xfb\xe3\x46";
+
+/*
+  enk.txt as found in GPL tarball:
+  COVR-X1860_GPL_Release/MTK7621_AX1800_BASE/vendors/COVR-X1860/imgkey/enk.txt
+*/
+const unsigned char enk_covrx1860[] =
+	"NE1oIS1lKzkkIzZkbX49KTMsMWFkJXEybjheJiN6KjIwNjgx";
+
+/*
+  enk.txt as found in GPL tarball:
+  DIR-X3260_GPL_Release/MTK7621_AX1800_BASE/vendors/DIR-X3260/imgkey/enk.txt
+*/
+const unsigned char enk_dirx3260[] =
+	"NF5yKy10JTl+bSkhNj1kTTIkI3FhIyUsJDU0czMyZmR6Jl4jMzI4KjA2Mg==";
+
+#define INTERLEAVE_BLOCK_SIZE	8
+const unsigned char interleaving_pattern[INTERLEAVE_BLOCK_SIZE][INTERLEAVE_BLOCK_SIZE] = {
+	{2, 5, 7, 4, 0, 6, 1, 3},
+	{7, 3, 2, 6, 4, 5, 1, 0},
+	{5, 1, 6, 7, 3, 0, 4, 2},
+	{0, 3, 7, 6, 5, 4, 2, 1},
+	{1, 5, 7, 0, 3, 2, 6, 4},
+	{3, 6, 2, 5, 4, 7, 1, 0},
+	{6, 0, 5, 1, 3, 4, 2, 7},
+	{4, 6, 7, 3, 2, 0, 1, 5}
+};
+
+/*
+  key.pem as found in GPL tarball, e.g.:
+  COVRP2500A1_FW101/COVRP2500_GPL_Release/package/tw-prog.priv/imgcrypt/key.pem
+  encrypted with passphrase: "12345678"
+*/
+const unsigned char key_legacy_pem[] = "\n\
+-----BEGIN RSA PRIVATE KEY-----\n\
+Proc-Type: 4,ENCRYPTED\n\
+DEK-Info: AES-256-CBC,EAA1FD02CDBC7AA7E62AC821D47823F2\n\
+\n\
+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\n\
+-----END RSA PRIVATE KEY-----";
+
+/*
+  key.pem as found in GPL tarball:
+  DIR1260_GPL_Release/vendors/DIR-1260/imgkey/key.pem
+  encrypted with passphrase: "12345678"
+*/
+const unsigned char key_dir1260_pem[] = "\n\
+-----BEGIN RSA PRIVATE KEY-----\n\
+Proc-Type: 4,ENCRYPTED\n\
+DEK-Info: AES-256-CBC,FFC890207BA9F13F6CE13F8EF7E69802\n\
+\n\
+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\n\
+-----END RSA PRIVATE KEY-----";
+
+/*
+  key.pem as found in GPL tarball:
+  DIR2150_GPL_Release/vendors/DIR-2150/imgkey/key.pem
+  encrypted with passphrase: "12345678"
+*/
+const unsigned char key_dir2150_pem[] = "\n\
+-----BEGIN RSA PRIVATE KEY-----\n\
+Proc-Type: 4,ENCRYPTED\n\
+DEK-Info: AES-256-CBC,314D3C7FB69E7DDEAF084A0A7CA39069\n\
+\n\
+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\n\
+-----END RSA PRIVATE KEY-----";
+
+/*
+  key.pem as found in GPL tarball:
+  COVR-X1860_GPL_Release/MTK7621_AX1800_BASE/vendors/COVR-X1860/imgkey/key.pem
+  encrypted with passphrase: "12345678"
+*/
+const unsigned char key_covrx1860_pem[] = "\n\
+-----BEGIN RSA PRIVATE KEY-----\n\
+Proc-Type: 4,ENCRYPTED\n\
+DEK-Info: AES-256-CBC,34CCF1AEF0C34EAC5FFAE6BCF81ABB8D\n\
+\n\
+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\n\
+-----END RSA PRIVATE KEY-----";
+
+/*
+  key.pem as found in GPL tarball, e.g.:
+  DIR-X3260_GPL_Release/MTK7621_AX1800_BASE/vendors/DIR-X3260/imgkey/key.pem
+  encrypted with passphrase: "12345678"
+*/
+const unsigned char key_dirx3260_pem[] = "\n\
+-----BEGIN RSA PRIVATE KEY-----\n\
+Proc-Type: 4,ENCRYPTED\n\
+DEK-Info: AES-256-CBC,DDAC1FE060CB240242046BDFEEE17E44\n\
+\n\
+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\n\
+-----END RSA PRIVATE KEY-----";
