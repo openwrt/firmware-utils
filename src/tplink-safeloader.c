@@ -2160,7 +2160,7 @@ static struct device_info boards[] = {
 	{
 		.id = "EAP615-WALL-V1",
 		.soft_ver = SOFT_VER_DEFAULT,
-		.soft_ver_compat_level = 1,
+		.soft_ver_compat_level = 2,
 		.support_list =
 			"SupportList:\r\n"
 			"EAP615-Wall(TP-Link|UN|AX1800-D):1.0\r\n"
