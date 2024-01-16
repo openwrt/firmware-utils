@@ -4272,6 +4272,10 @@ static int firmware_info(const char *input)
 			printf("Version: %d.%d.%d\n", s->version_major, s->version_minor, s->version_patch);
 			printf("Date: %02x%02x-%02x-%02x\n", s->year_hi, s->year_lo, s->month, s->day);
 			printf("Revision: %d\n", ntohl(s->rev));
+
+			if (data_len >= offsetof(struct soft_version, compat_level)) {
+				printf("Compatibility level: %d\n", ntohl(s->compat_level));
+			}
 		} else {
 			printf("Failed to parse data\n");
 		}
