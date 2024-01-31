@@ -1983,7 +1983,7 @@ static struct device_info boards[] = {
 			"EAP225-Outdoor(TP-Link|UN|AC1200-D):3.0 CA,JP\r\n",
 		.part_trail = PART_TRAIL_NONE,
 		.soft_ver = SOFT_VER_DEFAULT,
-		.soft_ver_compat_level = 1,
+		.soft_ver_compat_level = 2,
 
 		.partitions = {
 			{"fs-uboot", 0x00000, 0x20000},
