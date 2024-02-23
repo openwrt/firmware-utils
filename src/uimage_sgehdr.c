@@ -40,9 +40,9 @@ struct image_header {
 	uint8_t		ih_type;	/* Image Type			*/
 	uint8_t		ih_comp;	/* Compression Type		*/
 	uint8_t		ih_name[IH_NMLEN];	/* Image Name		*/
-	uint8_t		sgeih_p[SGE_PRODUCTLEN];	/* sge_Product		*/
-	uint8_t		sgeih_sv[SGE_VERSIONLEN];	/* sge Software Version		*/
-	uint8_t		sgeih_hv[SGE_VERSIONLEN];	/* sge Hardware Version		*/
+	char		sgeih_p[SGE_PRODUCTLEN];	/* sge_Product		*/
+	char		sgeih_sv[SGE_VERSIONLEN];	/* sge Software Version		*/
+	char		sgeih_hv[SGE_VERSIONLEN];	/* sge Hardware Version		*/
 };
 
 
