@@ -569,7 +569,7 @@ fail:
 static void usage(char *prog)
 {
 	fprintf(stderr, "Usage: %s [-v] [-n] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
-			"          [-a 0..4] [-l <align kB>] [-G <guid>]\n"
+			"          [-a <part number>] [-l <align kB>] [-G <guid>]\n"
 			"          [[-t <type> | -T <GPT part type>] [-r] [-N <name>] -p <size>[@<start>]...] \n", prog);
 	exit(EXIT_FAILURE);
 }
@@ -668,8 +668,6 @@ int main (int argc, char **argv)
 			break;
 		case 'a':
 			active = (int)strtoul(optarg, NULL, 0);
-			if ((active < 0) || (active > 4))
-				active = 0;
 			break;
 		case 'l':
 			kb_align = (int)strtoul(optarg, NULL, 0) * 2;
@@ -699,6 +697,11 @@ int main (int argc, char **argv)
 	argc -= optind;
 	if (argc || (!use_guid_partition_table && ((heads <= 0) || (sectors <= 0))) || !filename)
 		usage(argv[0]);
+
+	if ((use_guid_partition_table && active > GPT_ENTRY_MAX) ||
+	    (!use_guid_partition_table && active > MBR_ENTRY_MAX) ||
+	    active < 0)
+		active  = 0;
 
 	if (use_guid_partition_table) {
 		heads = 254;
