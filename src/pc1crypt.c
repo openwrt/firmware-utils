@@ -167,18 +167,18 @@ static void pc1_init(struct pc1_ctx *pc1)
 	strcpy(pc1->cle, "Remsaalps!123456");
 }
 
-static void pc1_decrypt_buf(struct pc1_ctx *pc1, unsigned char *buf,
-			    unsigned len)
+static void pc1_decrypt_buf(struct pc1_ctx *pc1, void *data, unsigned len)
 {
+	unsigned char *buf = data;
 	unsigned i;
 
 	for (i = 0; i < len; i++)
 		buf[i] = pc1_decrypt(pc1, buf[i]);
 }
 
-static void pc1_encrypt_buf(struct pc1_ctx *pc1, unsigned char *buf,
-			    unsigned len)
+static void pc1_encrypt_buf(struct pc1_ctx *pc1, void *data, unsigned len)
 {
+	unsigned char *buf = data;
 	unsigned i;
 
 	for (i = 0; i < len; i++)
