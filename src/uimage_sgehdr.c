@@ -73,7 +73,6 @@ int main(int argc, char *argv[])
 	char *hversion = NULL;
 	char *sversion = NULL;
 	int padsz = IH_PAD_BYTES;
-	int ltmp;
 
 	while ((opt = getopt(argc, argv, "i:o:m:h:s:")) != -1) {
 		switch (opt) {
