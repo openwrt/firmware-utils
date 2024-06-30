@@ -383,8 +383,18 @@ uint32_t get_timestamp(void)
 
 static int show_info(char *img, size_t img_size)
 {
+	uint32_t data_size, fdt_size, fs_size, fs_offset = 0;
+	uint16_t fcrc, fcrc_c, checksum_c;
+	uint8_t fs_key, kernel_key, key;
+	uint32_t sn, en, xx = 0;
+	size_t buf_size = 12;
 	tail_footer_t * foot;
+	tail_content_t *cont;
 	image_header_t *hdr;
+	uint32_t cont_len;
+	uint32_t *fs_data;
+	uint8_t *buf;
+	trx2_t *trx;
 	int i;
 
 	/* Assume valid, already validated early in process_image */
@@ -419,14 +429,7 @@ static int show_info(char *img, size_t img_size)
 		ERR("Formart HDR1 currently not supported");
 		break;
 	case 2:
-		uint32_t data_size, fdt_size, fs_size, fs_offset = 0;
-		const uint32_t hsz = sizeof(image_header_t);
-		trx2_t *trx = &hdr->tail.trx2;
-		uint8_t fs_key, kernel_key, key;
-		uint32_t sn, en, xx = 0;
-		size_t buf_size = 12;
-		uint32_t *fs_data;
-		uint8_t *buf;
+		trx = &hdr->tail.trx2;
 
 		data_size = (uint32_t)be32toh(hdr->ih_size);
 		sn = htole16(trx->sn);
@@ -453,7 +456,7 @@ static int show_info(char *img, size_t img_size)
 
 		fs_data = (uint32_t *)(img + fs_offset);
 		DBG("fs_data: %08X %08X \n", be32toh(fs_data[0]), be32toh(fs_data[1]));
-		fs_size = hsz + data_size - fs_offset;
+		fs_size = sizeof(image_header_t) + data_size - fs_offset;
 		DBG("fs_size: 0x%X bytes \n", fs_size);
 		fs_key = img[fs_offset + fs_size / 2];
 		kernel_key = img[fs_offset / 2];
@@ -475,10 +478,6 @@ static int show_info(char *img, size_t img_size)
 		}
 		break;
 	case 3:
-		uint16_t fcrc, fcrc_c, checksum_c;
-		tail_content_t *cont;
-		uint32_t cont_len;
-
 		DBG("tail: footer size = 0x%lX  (%lu) \n", sizeof(tail_footer_t), sizeof(tail_footer_t));
 		DBG("tail: footer magic: 0x%X \n", be32toh(foot->magic));
 
