@@ -70,8 +70,7 @@ void add_signature(FILE* f, salt_t* salt) {
 	add_magic_bytes(f);
 }
 
-void add_version_suffix(FILE* f) {
-	char* version_suffix = "c0ffeef0rge";
+void add_version_suffix(FILE* f,char* version_suffix) {
 	fseek(f, 0, SEEK_END);
 	fwrite(version_suffix, sizeof(char), strlen(version_suffix), f);
 }
@@ -141,11 +140,15 @@ void verify_args(int argc, char** argv) {
 	int i;
 
 	if (argc < 3) {
-		printf("Usage: %s <firmware file> <signing hash1> <signing hash2> ... <signing hash n>\n", argv[0]);
+		printf("Usage: %s <firmware file> -v <version> <signing hash1> ... <signing hash n>\n", argv[0]);
 		exit(1);
 	}
 
 	for (i = 2; i < argc; i++) {
+		if (strcmp(argv[i],"-v") == 0) { 
+			i++; // don't check -v or version 
+			return;
+		}
 		verify_valid_hex_str(argv[i]);
 	}
 }
@@ -183,15 +186,24 @@ FILE* make_out_file(char* filename) {
  * Sign the firmware file after all of our checks have completed
  */
 void sign_firmware(char* filename, char** salts, int num_salts) {
-	int i;
+	int i = 0;
 	salt_t salt;
 	FILE* f = make_out_file(filename);
-
+	
+	char* version_suffix = "c0ffeef0rge";  // load defaut version
+			
+	if (strcmp(salts[0],"-v") == 0) {	   // update version from -v swtich
+		version_suffix = salts[1];
+		i = 2; 
+		}
+	
+	printf("version suffix: %s \n", version_suffix);
+	
 	// add a version suffix string - dlink versions do something similar before the first signature
-	add_version_suffix(f);
+	add_version_suffix(f,version_suffix);
 
 	//for each of the salts we are supplied with
-	for (i = 0; i < num_salts; i++) {
+	for (; i < num_salts; i++) {
 		char* salt_str = salts[i];
 		// convert this str to binary
 		init_salt(&salt, salt_str);
