@@ -2127,7 +2127,7 @@ static struct device_info boards[] = {
 	{
 		.id = "EAP610-V3",
 		.soft_ver = SOFT_VER_DEFAULT,
-		.soft_ver_compat_level = 1,
+		.soft_ver_compat_level = 2,
 		.support_list =
 			"SupportList:\r\n"
 			"EAP610(TP-Link|UN|AX1800-D):3.0\r\n"
