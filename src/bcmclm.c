@@ -52,8 +52,8 @@ struct bcmclm_header {
 };
 
 struct bcmclm_lookup_table {
-	uint32_t offset0;
-	uint32_t offset1;
+	uint32_t channels_2ghz;
+	uint32_t channels_5ghz;
 	uint32_t offset2;
 	uint32_t offset3;
 	uint32_t offset4;
@@ -100,6 +100,17 @@ struct bcmclm_lookup_table {
 	uint32_t offset45;
 	uint32_t offset46;
 	uint32_t offset47;
+};
+
+struct bcmclm_channels_lookup {
+	uint32_t num;
+	uint32_t offset;
+};
+
+struct bcmclm_channels_range {
+	uint8_t first;
+	uint8_t last;
+	uint8_t unknown;
 };
 
 /* Parsed info */
@@ -231,14 +242,60 @@ static int bcmclm_parse(FILE *fp, struct bcmclm_info *info)
  * Info
  **************************************************/
 
+static void bcmclm_print_channels(FILE *fp, struct bcmclm_info *info, const char *band, size_t num, size_t offset)
+{
+	struct bcmclm_channels_range *ranges;
+	size_t read;
+	int i;
+
+	ranges = calloc(num, sizeof(struct bcmclm_channels_range));
+	if (!ranges) {
+		return;
+	}
+
+	fseek(fp, offset + info->offsets_fixup, SEEK_SET);
+
+	read = fread(ranges, sizeof(struct bcmclm_channels_range), num, fp);
+	if (read != num) {
+		goto out;
+	}
+
+	for (i = 0; i < num; i++) {
+		printf("%3s GHz band channels: %d - %d\n", band, le32_to_cpu(ranges[i].first), le32_to_cpu(ranges[i].last));
+	}
+
+out:
+	free(ranges);
+}
+
 static void bcmclm_print_lookup_data(FILE *fp, struct bcmclm_info *info)
 {
 	uint8_t buf[64];
 	size_t bytes;
 
-	if (info->lookup_table.offset_creation_date) {
-		printf("\n");
+	if (info->lookup_table.channels_2ghz) {
+		struct bcmclm_channels_lookup channels;
 
+		fseek(fp, le32_to_cpu(info->lookup_table.channels_2ghz) + info->offsets_fixup, SEEK_SET);
+
+		bytes = fread(&channels, 1, sizeof(channels), fp);
+		if (bytes == sizeof(channels)) {
+			bcmclm_print_channels(fp, info, "2.4", le32_to_cpu(channels.num), le32_to_cpu(channels.offset));
+		}
+	}
+
+	if (info->lookup_table.channels_5ghz) {
+		struct bcmclm_channels_lookup channels;
+
+		fseek(fp, le32_to_cpu(info->lookup_table.channels_5ghz) + info->offsets_fixup, SEEK_SET);
+
+		bytes = fread(&channels, 1, sizeof(channels), fp);
+		if (bytes == sizeof(channels)) {
+			bcmclm_print_channels(fp, info, "5", le32_to_cpu(channels.num), le32_to_cpu(channels.offset));
+		}
+	}
+
+	if (info->lookup_table.offset_creation_date) {
 		fseek(fp, le32_to_cpu(info->lookup_table.offset_creation_date) + info->offsets_fixup, SEEK_SET);
 
 		bytes = fread(buf, 1, sizeof(buf), fp);
@@ -296,6 +353,7 @@ static int bcmclm_info(int argc, char **argv)
 	printf("\n");
 	printf("Virtual header address: 0x%08x (real: 0x%zx)\n", le32_to_cpu(info.header.virtual_header_address), le32_to_cpu(info.header.virtual_header_address) + info.offsets_fixup);
 	printf("Virtual lookup table address: 0x%08x (real: 0x%zx)\n", le32_to_cpu(info.header.lookup_table_address), le32_to_cpu(info.header.lookup_table_address) + info.offsets_fixup);
+	printf("\n");
 
 	bcmclm_print_lookup_data(fp, &info);
 
