@@ -490,7 +490,7 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 
 	pte[0].type = 0xEE;
 	pte[0].start = cpu_to_le32(GPT_HEADER_SECTOR);
-	pte[0].length = cpu_to_le32(end - GPT_HEADER_SECTOR);
+	pte[0].length = cpu_to_le32(end + 1 - GPT_HEADER_SECTOR);
 	to_chs(GPT_HEADER_SECTOR, pte[0].chs_start);
 	to_chs(end, pte[0].chs_end);
 
