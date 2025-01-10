@@ -121,9 +121,9 @@ struct pte {
 };
 
 struct partinfo {
-	unsigned long actual_start;
-	unsigned long start;
-	unsigned long size;
+	unsigned long long actual_start;
+	unsigned long long start;
+	unsigned long long size;
 	int type;
 	int hybrid;
 	char *name;
@@ -180,13 +180,13 @@ char *filename = NULL;
  *
  * returns the size in KByte
  */
-static long to_kbytes(const char *string)
+static long long to_kbytes(const char *string)
 {
 	int exp = 0;
-	long result;
+	long long result;
 	char *end;
 
-	result = strtoul(string, &end, 0);
+	result = strtoull(string, &end, 0);
 	switch (tolower(*end)) {
 		case 'k' :
 		case '\0' : exp = 0; break;
@@ -325,7 +325,7 @@ static inline void init_utf16(char *str, uint16_t *buf, unsigned bufsize)
 static int gen_ptable(uint32_t signature, int nr)
 {
 	struct pte pte[MBR_ENTRY_MAX];
-	unsigned long start, len, sect = 0;
+	unsigned long long start, len, sect = 0;
 	int i, fd, ret = -1;
 
 	memset(pte, 0, sizeof(struct pte) * MBR_ENTRY_MAX);
@@ -343,7 +343,7 @@ static int gen_ptable(uint32_t signature, int nr)
 		start = sect + sectors;
 		if (parts[i].start != 0) {
 			if (parts[i].start * 2 < start) {
-				fprintf(stderr, "Invalid start %ld for partition %d!\n",
+				fprintf(stderr, "Invalid start %lld for partition %d!\n",
 					parts[i].start, i);
 				return ret;
 			}
@@ -362,13 +362,13 @@ static int gen_ptable(uint32_t signature, int nr)
 		to_chs(start + len - 1, pte[i].chs_end);
 
 		if (verbose)
-			fprintf(stderr, "Partition %d: start=%ld, end=%ld, size=%ld\n",
+			fprintf(stderr, "Partition %d: start=%lld, end=%lld, size=%lld\n",
 					i,
-					(long)start * DISK_SECTOR_SIZE,
-					(long)(start + len) * DISK_SECTOR_SIZE,
-					(long)len * DISK_SECTOR_SIZE);
-		printf("%ld\n", (long)start * DISK_SECTOR_SIZE);
-		printf("%ld\n", (long)len * DISK_SECTOR_SIZE);
+					start * DISK_SECTOR_SIZE,
+					(start + len) * DISK_SECTOR_SIZE,
+					len * DISK_SECTOR_SIZE);
+		printf("%lld\n", start * DISK_SECTOR_SIZE);
+		printf("%lld\n", len * DISK_SECTOR_SIZE);
 	}
 
 	if ((fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0) {
@@ -432,7 +432,7 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 		start = sect;
 		if (parts[i].start != 0) {
 			if (parts[i].start * 2 < start) {
-				fprintf(stderr, "Invalid start %ld for partition %d!\n",
+				fprintf(stderr, "Invalid start %lld for partition %d!\n",
 					parts[i].start, i);
 				return ret;
 			}
@@ -645,7 +645,7 @@ int main (int argc, char **argv)
 			parts[part].required = required;
 			parts[part].name = name;
 			parts[part].hybrid = hybrid;
-			fprintf(stderr, "part %ld %ld\n", parts[part].start, parts[part].size);
+			fprintf(stderr, "part %lld %lld\n", parts[part].start, parts[part].size);
 			parts[part++].type = type;
 			/*
 			 * reset 'name','required' and 'hybrid'
