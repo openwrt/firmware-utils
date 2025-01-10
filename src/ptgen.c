@@ -203,10 +203,8 @@ static long to_kbytes(const char *string)
 		return 0;
 	}
 
-	/* result: number + 1024^(exp) */
-	if (exp == 0)
-		return result;
-	return result * (2 << ((10 * exp) - 1));
+	/* result: number * 1024^(exp) */
+	return result * (1 << (10 * exp));
 }
 
 /* convert the sector number into a CHS value for the partition table */
