@@ -678,9 +678,11 @@ static struct device_info boards[] = {
 			"CPE710(TP-LINK|UN|AC866-5|00000000):2.0\r\n"
 			"CPE710(TP-LINK|EU|AC866-5|45550000):2.0\r\n"
 			"CPE710(TP-LINK|US|AC866-5|55530000):2.0\r\n"
+			"CPE710(TP-LINK|JP|AC866-5|4A500000):2.0\r\n"
 			"CPE710(TP-LINK|UN|AC866-5):2.0\r\n"
 			"CPE710(TP-LINK|EU|AC866-5):2.0\r\n"
-			"CPE710(TP-LINK|US|AC866-5):2.0\r\n",
+			"CPE710(TP-LINK|US|AC866-5):2.0\r\n"
+			"CPE710(TP-LINK|JP|AC866-5):2.0\r\n",
 		.part_trail = 0xff,
 		.soft_ver = SOFT_VER_NUMERIC(1, 0, 0),
 		.soft_ver_compat_level = 1,
