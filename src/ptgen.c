@@ -121,9 +121,9 @@ struct pte {
 };
 
 struct partinfo {
-	unsigned long actual_start;
-	unsigned long start;
-	unsigned long size;
+	unsigned long long actual_start;
+	unsigned long long start;
+	unsigned long long size;
 	int type;
 	int hybrid;
 	char *name;
@@ -172,6 +172,10 @@ bool use_guid_partition_table = false;
 struct partinfo parts[GPT_ENTRY_MAX];
 char *filename = NULL;
 
+int gpt_split_image = false;
+int gpt_alternate = false;
+uint64_t gpt_first_entry_sector = GPT_FIRST_ENTRY_SECTOR;
+uint64_t gpt_last_usable_sector = 0;
 
 /*
  * parse the size argument, which is either
@@ -180,13 +184,13 @@ char *filename = NULL;
  *
  * returns the size in KByte
  */
-static long to_kbytes(const char *string)
+static long long to_kbytes(const char *string)
 {
 	int exp = 0;
-	long result;
+	long long result;
 	char *end;
 
-	result = strtoul(string, &end, 0);
+	result = strtoull(string, &end, 0);
 	switch (tolower(*end)) {
 		case 'k' :
 		case '\0' : exp = 0; break;
@@ -203,10 +207,8 @@ static long to_kbytes(const char *string)
 		return 0;
 	}
 
-	/* result: number + 1024^(exp) */
-	if (exp == 0)
-		return result;
-	return result * (2 << ((10 * exp) - 1));
+	/* result: number * 1024^(exp) */
+	return result * (1 << (10 * exp));
 }
 
 /* convert the sector number into a CHS value for the partition table */
@@ -327,7 +329,7 @@ static inline void init_utf16(char *str, uint16_t *buf, unsigned bufsize)
 static int gen_ptable(uint32_t signature, int nr)
 {
 	struct pte pte[MBR_ENTRY_MAX];
-	unsigned long start, len, sect = 0;
+	unsigned long long start, len, sect = 0;
 	int i, fd, ret = -1;
 
 	memset(pte, 0, sizeof(struct pte) * MBR_ENTRY_MAX);
@@ -345,7 +347,7 @@ static int gen_ptable(uint32_t signature, int nr)
 		start = sect + sectors;
 		if (parts[i].start != 0) {
 			if (parts[i].start * 2 < start) {
-				fprintf(stderr, "Invalid start %ld for partition %d!\n",
+				fprintf(stderr, "Invalid start %lld for partition %d!\n",
 					parts[i].start, i);
 				return ret;
 			}
@@ -364,13 +366,13 @@ static int gen_ptable(uint32_t signature, int nr)
 		to_chs(start + len - 1, pte[i].chs_end);
 
 		if (verbose)
-			fprintf(stderr, "Partition %d: start=%ld, end=%ld, size=%ld\n",
+			fprintf(stderr, "Partition %d: start=%lld, end=%lld, size=%lld\n",
 					i,
-					(long)start * DISK_SECTOR_SIZE,
-					(long)(start + len) * DISK_SECTOR_SIZE,
-					(long)len * DISK_SECTOR_SIZE);
-		printf("%ld\n", (long)start * DISK_SECTOR_SIZE);
-		printf("%ld\n", (long)len * DISK_SECTOR_SIZE);
+					start * DISK_SECTOR_SIZE,
+					(start + len) * DISK_SECTOR_SIZE,
+					len * DISK_SECTOR_SIZE);
+		printf("%lld\n", start * DISK_SECTOR_SIZE);
+		printf("%lld\n", len * DISK_SECTOR_SIZE);
 	}
 
 	if ((fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0) {
@@ -410,17 +412,18 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 		.revision = cpu_to_le32(GPT_REVISION),
 		.size = cpu_to_le32(GPT_HEADER_SIZE),
 		.self = cpu_to_le64(GPT_HEADER_SECTOR),
-		.first_usable = cpu_to_le64(GPT_FIRST_ENTRY_SECTOR + GPT_ENTRY_SIZE * GPT_ENTRY_MAX / DISK_SECTOR_SIZE),
-		.first_entry = cpu_to_le64(GPT_FIRST_ENTRY_SECTOR),
+		.first_usable = cpu_to_le64(gpt_first_entry_sector + GPT_SIZE),
+		.first_entry = cpu_to_le64(gpt_first_entry_sector),
 		.disk_guid = guid,
 		.entry_num = cpu_to_le32(GPT_ENTRY_MAX),
 		.entry_size = cpu_to_le32(GPT_ENTRY_SIZE),
 	};
 	struct gpte  gpte[GPT_ENTRY_MAX];
 	uint64_t start, end;
-	uint64_t sect = GPT_SIZE + GPT_FIRST_ENTRY_SECTOR;
+	uint64_t sect = GPT_SIZE + gpt_first_entry_sector;
 	int fd, ret = -1;
 	unsigned i, pmbr = 1;
+	char img_name[strlen(filename) + 20];
 
 	memset(pte, 0, sizeof(struct pte) * MBR_ENTRY_MAX);
 	memset(gpte, 0, GPT_ENTRY_SIZE * GPT_ENTRY_MAX);
@@ -434,13 +437,19 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 		start = sect;
 		if (parts[i].start != 0) {
 			if (parts[i].start * 2 < start) {
-				fprintf(stderr, "Invalid start %ld for partition %d!\n",
+				fprintf(stderr, "Invalid start %lld for partition %d!\n",
 					parts[i].start, i);
 				return ret;
 			}
 			start = parts[i].start * 2;
 		} else if (kb_align != 0) {
 			start = round_to_kb(start);
+		}
+		if ((gpt_last_usable_sector > 0) &&
+		    (start + parts[i].size * 2 > gpt_last_usable_sector + 1)) {
+				fprintf(stderr, "Partition %d ends after last usable sector %ld\n",
+					i, gpt_last_usable_sector);
+				return ret;
 		}
 		parts[i].actual_start = start;
 		gpte[i].start = cpu_to_le64(start);
@@ -480,29 +489,42 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 		printf("%" PRIu64 "\n", (sect - start) * DISK_SECTOR_SIZE);
 	}
 
-	if (parts[0].actual_start > GPT_FIRST_ENTRY_SECTOR + GPT_SIZE) {
-		gpte[GPT_ENTRY_MAX - 1].start = cpu_to_le64(GPT_FIRST_ENTRY_SECTOR + GPT_SIZE);
+	if ((parts[0].start != 0) &&
+	    (parts[0].actual_start > gpt_first_entry_sector + GPT_SIZE)) {
+		gpte[GPT_ENTRY_MAX - 1].start = cpu_to_le64(gpt_first_entry_sector + GPT_SIZE);
 		gpte[GPT_ENTRY_MAX - 1].end = cpu_to_le64(parts[0].actual_start - 1);
 		gpte[GPT_ENTRY_MAX - 1].type = GUID_PARTITION_BIOS_BOOT;
 		gpte[GPT_ENTRY_MAX - 1].guid = guid;
 		gpte[GPT_ENTRY_MAX - 1].guid.b[sizeof(guid_t) -1] += GPT_ENTRY_MAX;
 	}
 
-	end = sect + GPT_SIZE;
+	if (gpt_last_usable_sector == 0)
+		gpt_last_usable_sector = sect - 1;
+
+	end = gpt_last_usable_sector + GPT_SIZE + 1;
 
 	pte[0].type = 0xEE;
 	pte[0].start = cpu_to_le32(GPT_HEADER_SECTOR);
-	pte[0].length = cpu_to_le32(end - GPT_HEADER_SECTOR);
+	pte[0].length = cpu_to_le32(end + 1 - GPT_HEADER_SECTOR);
 	to_chs(GPT_HEADER_SECTOR, pte[0].chs_start);
 	to_chs(end, pte[0].chs_end);
 
-	gpth.last_usable = cpu_to_le64(end - GPT_SIZE - 1);
+	gpth.last_usable = cpu_to_le64(gpt_last_usable_sector);
 	gpth.alternate = cpu_to_le64(end);
 	gpth.entry_crc32 = cpu_to_le32(gpt_crc32(gpte, GPT_ENTRY_SIZE * GPT_ENTRY_MAX));
 	gpth.crc32 = cpu_to_le32(gpt_crc32((char *)&gpth, GPT_HEADER_SIZE));
 
-	if ((fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0) {
-		fprintf(stderr, "Can't open output file '%s'\n",filename);
+	if (verbose)
+		fprintf(stderr, "PartitionEntryLBA=%" PRIu64 ", FirstUsableLBA=%" PRIu64 ", LastUsableLBA=%" PRIu64 "\n",
+			gpt_first_entry_sector, gpt_first_entry_sector + GPT_SIZE, gpt_last_usable_sector);
+
+	if (!gpt_split_image)
+		strcpy(img_name, filename);
+	else
+		snprintf(img_name, sizeof(img_name), "%s.start", filename);
+
+	if ((fd = open(img_name, O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0) {
+		fprintf(stderr, "Can't open output file '%s'\n",img_name);
 		return ret;
 	}
 
@@ -529,36 +551,65 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 		goto fail;
 	}
 
-	lseek(fd, GPT_FIRST_ENTRY_SECTOR * DISK_SECTOR_SIZE, SEEK_SET);
-	if (write(fd, &gpte, GPT_ENTRY_SIZE * GPT_ENTRY_MAX) != GPT_ENTRY_SIZE * GPT_ENTRY_MAX) {
-		fputs("write failed.\n", stderr);
-		goto fail;
-	}
-
-#ifdef WANT_ALTERNATE_PTABLE
-	/* The alternate partition table (We omit it by default) */
-	swap(gpth.self, gpth.alternate);
-	gpth.first_entry = cpu_to_le64(end - GPT_ENTRY_SIZE * GPT_ENTRY_MAX / DISK_SECTOR_SIZE),
-	gpth.crc32 = 0;
-	gpth.crc32 = cpu_to_le32(gpt_crc32(&gpth, GPT_HEADER_SIZE));
-
-	lseek(fd, end * DISK_SECTOR_SIZE - GPT_ENTRY_SIZE * GPT_ENTRY_MAX, SEEK_SET);
-	if (write(fd, &gpte, GPT_ENTRY_SIZE * GPT_ENTRY_MAX) != GPT_ENTRY_SIZE * GPT_ENTRY_MAX) {
-		fputs("write failed.\n", stderr);
-		goto fail;
-	}
-
-	lseek(fd, end * DISK_SECTOR_SIZE, SEEK_SET);
-	if (write(fd, &gpth, GPT_HEADER_SIZE) != GPT_HEADER_SIZE) {
-		fputs("write failed.\n", stderr);
-		goto fail;
-	}
-	lseek(fd, (end + 1) * DISK_SECTOR_SIZE -1, SEEK_SET);
+	lseek(fd, 2 * DISK_SECTOR_SIZE - 1, SEEK_SET);
 	if (write(fd, "\x00", 1) != 1) {
 		fputs("write failed.\n", stderr);
 		goto fail;
 	}
-#endif
+
+	if (!gpt_split_image || (gpt_first_entry_sector == GPT_FIRST_ENTRY_SECTOR)) {
+		lseek(fd, gpt_first_entry_sector * DISK_SECTOR_SIZE, SEEK_SET);
+	} else {
+		close(fd);
+
+		snprintf(img_name, sizeof(img_name), "%s.entry", filename);
+		if ((fd = open(img_name, O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0) {
+			fprintf(stderr, "Can't open output file '%s'\n",img_name);
+			return ret;
+		}
+	}
+
+	if (write(fd, &gpte, GPT_ENTRY_SIZE * GPT_ENTRY_MAX) != GPT_ENTRY_SIZE * GPT_ENTRY_MAX) {
+		fputs("write failed.\n", stderr);
+		goto fail;
+	}
+
+	if (gpt_alternate) {
+		/* The alternate partition table (We omit it by default) */
+		swap(gpth.self, gpth.alternate);
+		gpth.first_entry = cpu_to_le64(end - GPT_ENTRY_SIZE * GPT_ENTRY_MAX / DISK_SECTOR_SIZE),
+		gpth.crc32 = 0;
+		gpth.crc32 = cpu_to_le32(gpt_crc32(&gpth, GPT_HEADER_SIZE));
+
+		if (!gpt_split_image) {
+			lseek(fd, end * DISK_SECTOR_SIZE - GPT_ENTRY_SIZE * GPT_ENTRY_MAX, SEEK_SET);
+		} else {
+			close(fd);
+
+			end = GPT_SIZE;
+			snprintf(img_name, sizeof(img_name), "%s.end", filename);
+			if ((fd = open(img_name, O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0) {
+				fprintf(stderr, "Can't open output file '%s'\n",img_name);
+				return ret;
+			}
+		}
+
+		if (write(fd, &gpte, GPT_ENTRY_SIZE * GPT_ENTRY_MAX) != GPT_ENTRY_SIZE * GPT_ENTRY_MAX) {
+			fputs("write failed.\n", stderr);
+			goto fail;
+		}
+
+		lseek(fd, end * DISK_SECTOR_SIZE, SEEK_SET);
+		if (write(fd, &gpth, GPT_HEADER_SIZE) != GPT_HEADER_SIZE) {
+			fputs("write failed.\n", stderr);
+			goto fail;
+		}
+		lseek(fd, (end + 1) * DISK_SECTOR_SIZE -1, SEEK_SET);
+		if (write(fd, "\x00", 1) != 1) {
+			fputs("write failed.\n", stderr);
+			goto fail;
+		}
+	}
 
 	ret = 0;
 fail:
@@ -568,9 +619,11 @@ fail:
 
 static void usage(char *prog)
 {
-	fprintf(stderr, "Usage: %s [-v] [-n] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
+	fprintf(stderr, "Usage: %s [-v] [-n] [-b] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
 			"          [-a <part number>] [-l <align kB>] [-G <guid>]\n"
+			"          [-e <gpt_entry_offset>] [-d <gpt_disk_size>]\n"
 			"          [[-t <type> | -T <GPT part type>] [-r] [-N <name>] -p <size>[@<start>]...] \n", prog);
+
 	exit(EXIT_FAILURE);
 }
 
@@ -603,11 +656,12 @@ int main (int argc, char **argv)
 	int part = 0;
 	char *name = NULL;
 	unsigned short int hybrid = 0, required = 0;
+	uint64_t total_sectors;
 	uint32_t signature = 0x5452574F; /* 'OWRT' */
 	guid_t guid = GUID_INIT( signature, 0x2211, 0x4433, \
 			0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0x00);
 
-	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:vnHN:gl:rS:G:")) != -1) {
+	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:vnbHN:gl:rS:G:e:d:")) != -1) {
 		switch (ch) {
 		case 'o':
 			filename = optarg;
@@ -623,6 +677,37 @@ int main (int argc, char **argv)
 			break;
 		case 'H':
 			hybrid = 1;
+			break;
+		case 'e':
+			/* based on DISK_SECTOR_SIZE = 512 */
+			gpt_first_entry_sector = 2 * to_kbytes(optarg);
+			if (gpt_first_entry_sector < GPT_FIRST_ENTRY_SECTOR) {
+				fprintf(stderr, "GPT First Entry offset must not be smaller than %d KBytes\n",
+					GPT_FIRST_ENTRY_SECTOR / 2);
+				exit(EXIT_FAILURE);
+			}
+			break;
+		case 'd':
+			/*
+			 * Zero disk_size is specially allowed. It means: find a disk size
+			 * on the base of provided partitions list.
+			 *
+			 * based on DISK_SECTOR_SIZE = 512
+			 */
+			gpt_alternate = true;
+			total_sectors = 2 * to_kbytes(optarg);
+			if (total_sectors != 0) {
+				if (total_sectors <= 2 * GPT_SIZE + 3) {
+					fprintf(stderr, "GPT disk size must be larger than %d KBytes\n",
+						(2 * GPT_SIZE + 3) * DISK_SECTOR_SIZE / 1024);
+					exit(EXIT_FAILURE);
+				}
+				gpt_last_usable_sector = total_sectors - GPT_SIZE - 2;
+			}
+			break;
+		case 'b':
+			gpt_alternate = true;
+			gpt_split_image = true;
 			break;
 		case 'h':
 			heads = (int)strtoul(optarg, NULL, 0);
@@ -647,7 +732,7 @@ int main (int argc, char **argv)
 			parts[part].required = required;
 			parts[part].name = name;
 			parts[part].hybrid = hybrid;
-			fprintf(stderr, "part %ld %ld\n", parts[part].start, parts[part].size);
+			fprintf(stderr, "part %lld %lld\n", parts[part].start, parts[part].size);
 			parts[part++].type = type;
 			/*
 			 * reset 'name','required' and 'hybrid'
