@@ -3383,6 +3383,10 @@ static struct device_info boards[] = {
 		.vendor = "",
 		.support_list =
 			"SupportList:\n"
+			"{product_name:MR1800X,product_ver:1.0.0,special_id:45550000}\n"
+			"{product_name:MR70X,product_ver:1.0.0,special_id:42520000}\n"
+			"{product_name:MR70X,product_ver:1.0.0,special_id:45470000}\n"
+			"{product_name:MR70X,product_ver:1.0.0,special_id:53470000}\n"
 			"{product_name:MR70X,product_ver:1.0.0,special_id:45550000}\n"
 			"{product_name:MR70X,product_ver:1.0.0,special_id:4A500000}\n"
 			"{product_name:MR70X,product_ver:1.0.0,special_id:55530000}\n",
