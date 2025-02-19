@@ -107,6 +107,7 @@ typedef struct {
 #define MBR_DISK_SIGNATURE_OFFSET  440
 #define MBR_PARTITION_ENTRY_OFFSET 446
 #define MBR_BOOT_SIGNATURE_OFFSET  510
+#define MBR_MSDOS_SYSTYPE_EXTENDED 5
 
 #define DISK_SECTOR_SIZE        512
 
@@ -169,6 +170,12 @@ int sectors = -1;
 int kb_align = 0;
 bool ignore_null_sized_partition = false;
 bool use_guid_partition_table = false;
+bool use_mbr_extended_partition = false;
+/**
+ * If only MBR: 4 primary partitions is enough, or use 3 primary partitions and 1 extended partition.
+ * If MBR with EBR: At least 5 are needed, 3 primary, 1 extended, 1 logic.
+ * If GPT: At most 128 can be used under Windows.
+ */
 struct partinfo parts[GPT_ENTRY_MAX];
 char *filename = NULL;
 
@@ -324,7 +331,7 @@ static inline void init_utf16(char *str, uint16_t *buf, unsigned bufsize)
 }
 
 /* check the partition sizes and write the partition table */
-static int gen_ptable(uint32_t signature, int nr)
+static int gen_ptable(uint32_t signature, int nr, int realnr)
 {
 	struct pte pte[MBR_ENTRY_MAX];
 	unsigned long start, len, sect = 0;
@@ -364,7 +371,7 @@ static int gen_ptable(uint32_t signature, int nr)
 		to_chs(start + len - 1, pte[i].chs_end);
 
 		if (verbose)
-			fprintf(stderr, "Partition %d: start=%ld, end=%ld, size=%ld\n",
+			fprintf(stderr, "MBR Partition %d: start=%ld, end=%ld, size=%ld\n",
 					i,
 					(long)start * DISK_SECTOR_SIZE,
 					(long)(start + len) * DISK_SECTOR_SIZE,
@@ -393,6 +400,70 @@ static int gen_ptable(uint32_t signature, int nr)
 	if (write(fd, "\x55\xaa", 2) != 2) {
 		fputs("write failed.\n", stderr);
 		goto fail;
+	}
+
+	if (use_mbr_extended_partition) {
+		int _start = 0;
+		int offset = pte[3].start * 512;
+
+		for (i = nr; i < realnr; i++) {
+			unsigned long sect = 0;
+			int start = sectors, len;
+			struct pte ebrpte[2];
+			memset(ebrpte, 0, sizeof(ebrpte));
+	
+			if (!parts[i].size) {
+				if (ignore_null_sized_partition)
+					continue;
+				fprintf(stderr, "Invalid size in partition %d!\n", i);
+				return -1;
+			}
+
+			ebrpte[0].active = 0;
+			ebrpte[0].type = parts[i].type;
+
+			if (kb_align != 0)
+				start = round_to_kb(start);
+			ebrpte[0].start = cpu_to_le32(start);
+
+			sect = start + parts[i].size * 2;
+			if (kb_align == 0)
+				sect = round_to_cyl(sect);
+			ebrpte[0].length = cpu_to_le32(len = sect - start);
+
+			to_chs(start, ebrpte[0].chs_start);
+			to_chs(start + len - 1, ebrpte[0].chs_end);
+
+			/* ebrpte[1] -> point next EBR */
+			if (realnr - i > 1) {
+				_start += sect;
+				ebrpte[1].active = 0;
+				ebrpte[1].type = MBR_MSDOS_SYSTYPE_EXTENDED;
+				ebrpte[1].start = cpu_to_le32(_start);
+				ebrpte[1].length = 512;
+				to_chs(_start, ebrpte[1].chs_start);
+				to_chs(_start + 511, ebrpte[1].chs_end);
+			}
+
+			if (verbose)
+				fprintf(stderr, "EBR Partition %d: start=%ld, end=%ld, size=%ld\n", i - nr, (long)start * 512, ((long)start + (long)len) * 512, (long)len * 512);
+			printf("%ld\n", (long)start * 512);
+			printf("%ld\n", (long)len * 512);
+
+			lseek(fd, offset + 446, SEEK_SET);
+			if (write(fd, ebrpte, sizeof(struct pte) * 2) != sizeof(struct pte) * 2) {
+				fprintf(stderr, "write failed.\n");
+				goto fail;
+			}
+
+			lseek(fd, offset + 510, SEEK_SET);
+			if (write(fd, "\x55\xaa", 2) != 2) {
+				fprintf(stderr, "write failed.\n");
+				goto fail;
+			}
+
+			offset += sect * 512;
+		}
 	}
 
 	ret = 0;
@@ -568,7 +639,7 @@ fail:
 
 static void usage(char *prog)
 {
-	fprintf(stderr, "Usage: %s [-v] [-n] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
+	fprintf(stderr, "Usage: %s [-v] [-n] [-g] [-e] -h <heads> -s <sectors> -o <outputfile>\n"
 			"          [-a <part number>] [-l <align kB>] [-G <guid>]\n"
 			"          [[-t <type> | -T <GPT part type>] [-r] [-N <name>] -p <size>[@<start>]...] \n", prog);
 	exit(EXIT_FAILURE);
@@ -607,7 +678,7 @@ int main (int argc, char **argv)
 	guid_t guid = GUID_INIT( signature, 0x2211, 0x4433, \
 			0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0x00);
 
-	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:vnHN:gl:rS:G:")) != -1) {
+	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:evnHN:gl:rS:G:")) != -1) {
 		switch (ch) {
 		case 'o':
 			filename = optarg;
@@ -624,6 +695,9 @@ int main (int argc, char **argv)
 		case 'H':
 			hybrid = 1;
 			break;
+		case 'e':
+			use_mbr_extended_partition = 1;
+			break;
 		case 'h':
 			heads = (int)strtoul(optarg, NULL, 0);
 			break;
@@ -631,9 +705,15 @@ int main (int argc, char **argv)
 			sectors = (int)strtoul(optarg, NULL, 0);
 			break;
 		case 'p':
-			if (part > GPT_ENTRY_MAX - 1 || (!use_guid_partition_table && part > 3)) {
-				fputs("Too many partitions\n", stderr);
+			if (part > GPT_ENTRY_MAX - 1 || ((!use_guid_partition_table && !use_mbr_extended_partition) && part > 3)) {
+				fputs("Too many partitions, please add the -e parameter to automatically enable MBR extended partition\n", stderr);
 				exit(EXIT_FAILURE);
+			}
+			if (part == 3 && use_mbr_extended_partition) {
+				parts[part++].type = MBR_MSDOS_SYSTYPE_EXTENDED;
+				parts[part].size = to_kbytes(optarg);
+				parts[part++].type = type;
+				break;
 			}
 			p = strchr(optarg, '@');
 			if (p) {
@@ -709,5 +789,12 @@ int main (int argc, char **argv)
 		return gen_gptable(signature, guid, part) ? EXIT_FAILURE : EXIT_SUCCESS;
 	}
 
-	return gen_ptable(signature, part) ? EXIT_FAILURE : EXIT_SUCCESS;
+	if (part > 4) {
+		int logic_parts_sizes = 0;
+		for (int i = 4; i < part; i++)
+			logic_parts_sizes += kb_align / 2 + parts[i].size;
+		parts[3].size = logic_parts_sizes;
+	}
+
+	return gen_ptable(signature, part > 3 ? 4 : part, part) ? EXIT_FAILURE : EXIT_SUCCESS;
 }
