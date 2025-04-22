@@ -35,6 +35,13 @@
 
 #define IH_COMP_NONE	0
 
+#define GET_BE24(ptr) ( (((uint8_t *)(ptr))[0] << 16) | (((uint8_t *)(ptr))[1] << 8) | ((uint8_t *)(ptr))[2] )
+#define SET_BE24(ptr, value) do { \
+		((uint8_t *)(ptr))[0] = ((value) >> 16) & 0xFF; \
+		((uint8_t *)(ptr))[1] = ((value) >> 8) & 0xFF; \
+		((uint8_t *)(ptr))[2] =  (value) & 0xFF; \
+	} while (0)
+
 enum volume_t {
 	VOL_KERNEL	= 0,
 	VOL_RAMDISK,
@@ -49,11 +56,13 @@ typedef struct {
 } __attribute__ ((packed)) version_t;
 
 #define FS_OFFSET_PREFIX  (0xA9)
+#define TRX3_UNK1         (0x003000)
 
 typedef struct {
 	char		prod_name[23];
 	uint8_t		unk0;        // version of rootfs ???
-	uint32_t	fs_offset;   // 24 bit BE (first byte = 0xA9)
+	uint8_t		fs_prefix;   // prefix for fs_offset (0xA9)
+	uint8_t		fs_offset[3];// offset for fs-image (24 bit BE)
 } __attribute__ ((packed)) trx1_t;
 
 typedef struct {
@@ -63,7 +72,8 @@ typedef struct {
 	uint8_t		dummy;       // likely random byte
 	uint8_t		key;         // hash value from kernel and fs
 	uint8_t		unk[6];      // likely random bytes
-	uint32_t	fs_offset;   // 24 bit BE (first byte = 0xA9)
+	uint8_t		fs_prefix;   // prefix for fs_offset (0xA9)
+	uint8_t		fs_offset[3];// offset for fs-image (24 bit BE)
 } __attribute__ ((packed)) trx2_t;	// hdr2
 
 typedef struct {
@@ -310,7 +320,7 @@ int parse_args(int argc, char ** argv)
 	if (g_opt.trx_ver < 2 || g_opt.trx_ver > 3)
 		usage(EXIT_FAILURE);
 
-    return 0;
+	return 0;
 }
 
 static
@@ -387,7 +397,7 @@ static int show_info(char *img, size_t img_size)
 	uint16_t fcrc, fcrc_c, checksum_c;
 	uint8_t fs_key, kernel_key, key;
 	uint32_t sn, en, xx = 0;
-	size_t buf_size = 12;
+	size_t buf_size;
 	tail_footer_t * foot;
 	tail_content_t *cont;
 	image_header_t *hdr;
@@ -410,7 +420,7 @@ static int show_info(char *img, size_t img_size)
 	if (be32toh(foot->magic) == g_opt.magic)
 		g_opt.trx_ver = 3;  /* tail with magic = DEF_ASUS_TAIL_MAGIC */
 
-	if (be32toh(hdr->tail.trx2.fs_offset) >> 24 == FS_OFFSET_PREFIX) {
+	if (hdr->tail.trx2.fs_prefix == FS_OFFSET_PREFIX) {
 		g_opt.trx_ver = 1;  /* hdr1 */
 
 		for (i = 0; i < sizeof(hdr->tail.trx1.prod_name); i++) {
@@ -442,16 +452,18 @@ static int show_info(char *img, size_t img_size)
 		DBG("hdr2.en: %u (0x%04X) \n", en, htole16(trx->en));
 		DBG("hdr2.key: 0x%02X \n", trx->key);
 		buf = trx->unk;
+		buf_size = sizeof(trx2_t) - offsetof(trx2_t, unk);
 		for (size_t i = 0; i < buf_size; i += 2) {
-			if (buf[0] == FS_OFFSET_PREFIX && (buf[3] & 3) == 0) {
-				xx = (buf[3] << 24) | (buf[2] << 16) | (buf[1] << 8) | (xx && 0xFF);
-				fs_offset = be32toh(xx);
-				buf += 2;
+			if (buf[i] == FS_OFFSET_PREFIX) {
+				xx = GET_BE24(buf + 1);
+				if ((xx & 3) == 0) {
+					fs_offset = xx;
+					break;
+				}
 			}
-			buf += 2;
 		}
 		DBG("fs_offset: 0x%08X \n", fs_offset);
-		if (fs_offset + 128 > img_size)
+		if (!fs_offset || fs_offset + 128 > img_size)
 			ERR("Incorrect fs_offset!");
 
 		fs_data = (uint32_t *)(img + fs_offset);
@@ -481,7 +493,7 @@ static int show_info(char *img, size_t img_size)
 		DBG("tail: footer size = 0x%lX  (%lu) \n", sizeof(tail_footer_t), sizeof(tail_footer_t));
 		DBG("tail: footer magic: 0x%X \n", be32toh(foot->magic));
 
-		cont_len = foot->clen[0] << 24 | foot->clen[1] << 16 | foot->clen[2];
+		cont_len = GET_BE24(foot->clen);
 		DBG("tail: type = %X, flags = %X, content len = 0x%06X \n", foot->type, foot->flags, cont_len);
 
 		fcrc = foot->fcrc;
@@ -569,13 +581,19 @@ int process_image(void)
 	case 3:
 		prod_name = hdr->tail.trx3.prod_name;
 		max_prod_len = sizeof(hdr->tail.trx3.prod_name);
+		break;
+	default:
+		ERR("Incorrect option -v");
 	}
 
 	prod_name_str = (const char *)&hdr->kernel_ver;
 	if (g_opt.prod_name[0])
 		prod_name_str = g_opt.prod_name;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
 	strncpy(prod_name, prod_name_str, max_prod_len);
+#pragma GCC diagnostic pop
 	hdr->kernel_ver = g_opt.kernel_ver;
 	hdr->fs_ver = g_opt.fs_ver;
 
@@ -593,7 +611,7 @@ int process_image(void)
 
 			for (uint32_t i = 0; i <= VOL_COUNT; i++) {
 				if (vol_size[i] == 0)
-			   		break;
+					break;
 				vol_count++;
 			}
 			DBG("Multi image: volumes count = %u \n", vol_count);
@@ -610,7 +628,7 @@ int process_image(void)
 				DBG("Multi image: volume %u has offset = 0x%08X \n", i, xoffset);
 				if (be32toh(vol_size[i]) > 0x4FFFFFF) {
 					free(img);
-			    		ERR("Multi image contain volume %u with huge size", i);
+					ERR("Multi image contain volume %u with huge size", i);
 				}
 
 				xoffset += be32toh(vol_size[i]);
@@ -687,7 +705,8 @@ int process_image(void)
 			ERR("kernel image size is too big (max size: 16MiB)");
 		}
 
-		trx->fs_offset = htobe32((FS_OFFSET_PREFIX << 24) + fs_offset);
+		trx->fs_prefix = FS_OFFSET_PREFIX;
+		SET_BE24(trx->fs_offset, fs_offset);
 		update_iheader_crc(hdr, NULL, img_size - hsz);
 		break;
 	case 3:
@@ -695,7 +714,7 @@ int process_image(void)
 		cont = NULL;
 		foot = NULL;
 
-		hdr->tail.trx3.unk1 = htobe32(0x3000);  // unknown value
+		hdr->tail.trx3.unk1 = htobe32(TRX3_UNK1);  // unknown value
 
 		cont_len = img_size - hsz - data_size + sizeof(tail_content_t);
 		cont = (tail_content_t *)img_end;
@@ -713,9 +732,7 @@ int process_image(void)
 			ERR("Content length is too long (more than 0x%lX bytes)", 1UL << 24);
 		}
 
-		foot->clen[0] = (cont_len >> 16) & 0xFF;  // 24bit BigEndian
-		foot->clen[1] = (cont_len >> 8) & 0xFF;
-		foot->clen[2] = cont_len & 0xFF;
+		SET_BE24(foot->clen, cont_len);  // 24bit BigEndian
 
 		foot->magic = htobe32(g_opt.magic);
 		foot->type = g_opt.type;
