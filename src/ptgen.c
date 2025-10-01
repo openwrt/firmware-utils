@@ -489,8 +489,7 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 		printf("%" PRIu64 "\n", (sect - start) * DISK_SECTOR_SIZE);
 	}
 
-	if ((parts[0].start != 0) &&
-	    (parts[0].actual_start > gpt_first_entry_sector + GPT_SIZE)) {
+	if (parts[0].actual_start > GPT_FIRST_ENTRY_SECTOR + GPT_SIZE) {
 		gpte[GPT_ENTRY_MAX - 1].start = cpu_to_le64(gpt_first_entry_sector + GPT_SIZE);
 		gpte[GPT_ENTRY_MAX - 1].end = cpu_to_le64(parts[0].actual_start - 1);
 		gpte[GPT_ENTRY_MAX - 1].type = GUID_PARTITION_BIOS_BOOT;
