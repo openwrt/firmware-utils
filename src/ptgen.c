@@ -329,7 +329,7 @@ static inline void init_utf16(char *str, uint16_t *buf, unsigned bufsize)
 static int gen_ptable(uint32_t signature, int nr)
 {
 	struct pte pte[MBR_ENTRY_MAX];
-	unsigned long long start, len, sect = 0;
+	unsigned long long start, len, sect = kb_align ? 1 : sectors;
 	int i, fd, ret = -1;
 
 	memset(pte, 0, sizeof(struct pte) * MBR_ENTRY_MAX);
@@ -344,7 +344,7 @@ static int gen_ptable(uint32_t signature, int nr)
 		pte[i].active = ((i + 1) == active) ? 0x80 : 0;
 		pte[i].type = parts[i].type;
 
-		start = sect + sectors;
+		start = sect;
 		if (parts[i].start != 0) {
 			if (parts[i].start * 2 < start) {
 				fprintf(stderr, "Invalid start %lld for partition %d!\n",
