@@ -16,6 +16,7 @@
 
 #include <byteswap.h>
 #include <ctype.h>
+#include <cjson/cJSON.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -31,7 +32,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "cJSON.h"
 #include "dkmgt-fwutil.h"
 #include "md5.h"
 
