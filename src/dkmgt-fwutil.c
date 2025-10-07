@@ -1044,7 +1044,7 @@ int main(int argc, char** argv) {
     };
     const char* shortopts = gen_shortopts(longopts);
 
-    int (*action)(struct dkmgt_firmware*, const char*) = do_print;
+    int (*action)(struct dkmgt_firmware*, const char*) = NULL;
     const char *outfile = NULL;
     bool do_create = false;
 
@@ -1052,6 +1052,7 @@ int main(int argc, char** argv) {
     const char* update_swver = NULL;
     const char* update_fwid = NULL;
     const char* update_rev = NULL;
+    bool has_updates = false;
     int update_count = 0;
     struct ptn_update_action updates[DKMGT_MAX_PARTITIONS];
 
@@ -1128,17 +1129,17 @@ int main(int argc, char** argv) {
 
             case 'V':
                 update_swver = optarg;
-                action = do_write;
+                has_updates = true;
                 break;
             
             case 'I':
                 update_fwid = optarg;
-                action = do_write;
+                has_updates = true;
                 break;
 
             case 'R':
                 update_rev = optarg;
-                action = do_write;
+                has_updates = true;
                 break;
 
             case 'o':
@@ -1155,7 +1156,7 @@ int main(int argc, char** argv) {
         }
     }
     if (update_count > 0) {
-        action = do_write;
+        has_updates = true;
     }
 
     // Read the firmware, or create a new one.
@@ -1219,14 +1220,20 @@ int main(int argc, char** argv) {
         }
     }
 
+    /* Set the default action if nothing was explicitly specified. */
+    if (!action) {
+        if (has_updates) {
+            action = do_write;
+        } else {
+            action = do_print;
+        }
+    }
+
     // Write the firmware file back out.
-    int ret = EXIT_SUCCESS;
     if (!outfile) {
         outfile = filename;
     }
-    if (action) {
-        ret = action(fw, filename);
-    }
+    int ret = action(fw, filename);
     dkmgt_firmware_free(fw);
     return (ret < 0) ? EXIT_FAILURE : EXIT_SUCCESS;
 }
