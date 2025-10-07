@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/****************************************************************************
- *
+/*
  * This program contains tools to manipulate the dkmgt firmware format used
  * by the TP-Link Omada switches. Much of this work is based on reverse
  * engineering the bootloader and firmware on the TP-Link ER8411v1 router.
@@ -11,8 +10,7 @@
  *  | 0x11040 - EOF     | Upgrade partition data to be written to flash.
  *
  *  Copyright (C) 2025 Naomi Kirby <dev at manawolf.ca>
- *
- ***************************************************************************/
+ */
 
 #include <byteswap.h>
 #include <ctype.h>
@@ -110,9 +108,9 @@ static char* b64encode(const uint8_t* data, size_t len, char* b64buf) {
     return b64buf;
 }
 
-/****************************************************************************
-  DKMGT Firmware Header
- ***************************************************************************/
+/*
+ * DKMGT Firmware Header
+ */
 static void dkmgt_fw_header_parse(const void *data, size_t length, struct dkmgt_fw_header* h) {
     memcpy(h, data, sizeof(struct dkmgt_fw_header));
     for (int i = 0; i < 6; i++) {
@@ -140,7 +138,7 @@ static void dkmgt_fw_header_dump(const struct dkmgt_fw_header* h, const char* md
 }
 
 static void dkmgt_fw_signature_dump(const struct dkmgt_fw_header* h, FILE* fp) {
-    // Do nothing if the signature is all zeros.
+    /* Don't print anything if the signature is all zeros. */
     uint8_t zerocheck = 0;
     for (int i = 0; i < sizeof(h->signature); i++) {
         zerocheck |= h->signature[i];
@@ -149,7 +147,7 @@ static void dkmgt_fw_signature_dump(const struct dkmgt_fw_header* h, FILE* fp) {
         return;
     }
 
-    // Base64 encode the signature.
+    /* Base64 encode the signature. */
     char b64enc[B64_ENCODE_SIZE(sizeof(h->signature))];
     b64encode(h->signature, sizeof(h->signature), b64enc);
 
@@ -160,9 +158,9 @@ static void dkmgt_fw_signature_dump(const struct dkmgt_fw_header* h, FILE* fp) {
     fprintf(fp, "\n");
 }
 
-/****************************************************************************
-  DKMGT Partition Table
- ***************************************************************************/
+/*
+ * DKMGT Partition Table
+ */
 static int dkmgt_ptn_table_parse(struct dkmgt_ptn_table *ptable, char *block, const uint8_t *disk, size_t length) {
     cJSON *root = cJSON_Parse(block);
     if (!root || !cJSON_IsObject(root)) {
@@ -205,7 +203,7 @@ static int dkmgt_ptn_table_parse(struct dkmgt_ptn_table *ptable, char *block, co
             continue;
         }
 
-        // Allocate a copy of the partition data.
+        /* Allocate a copy of the partition data. */
         entry->size = strtoul(cJSON_GetStringValue(size), NULL, 0);
         if ((entry->base > length) || (entry->base + entry->size) > length) {
             fprintf(stderr, "partition '%s' overflows\n", entry->name);
@@ -357,14 +355,14 @@ static int dkmgt_ptn_table_update(struct dkmgt_ptn_table* ptable, const char* na
         return -1;
     }
 
-    // The updated partition data.
+    /* The updated partition data. */
     size_t ptnsize;
     uint8_t *ptndata = NULL;
     uint32_t memtype = DKMGT_PTN_MEM_NONE;
 
     char* suffix = strrchr(filename, '.');
     if (suffix && strcmp(suffix, ".json") == 0) {
-        // If this is a JSON file, wrap it with a partition header.
+        /* If this is a JSON file, wrap it with a partition header. */
         ptnsize = st.st_size + sizeof(struct dkmgt_ptn_header);
         ptndata = malloc(ptnsize);
         if (!ptndata) {
@@ -391,7 +389,7 @@ static int dkmgt_ptn_table_update(struct dkmgt_ptn_table* ptable, const char* na
         }
         fclose(rfp);
     } else {
-        // Otherwise, append the raw file contents without a header.
+        /* Otherwise, append the raw file contents without a header. */
         size_t length;
         ptndata = map_file(filename, &length);
         if (!ptndata) {
@@ -402,7 +400,7 @@ static int dkmgt_ptn_table_update(struct dkmgt_ptn_table* ptable, const char* na
         memtype = DKMGT_PTN_MEM_MMAP;
     }
 
-    // Check for an existing partition with the same name.
+    /* Check for an existing partition with the same name. */
     for (int i = 0; i < ptable->count; i++) {
         struct dkmgt_ptn_entry* entry = &ptable->partitions[i];
         if (strcmp(ptable->partitions[i].name, name) != 0) {
@@ -420,11 +418,11 @@ static int dkmgt_ptn_table_update(struct dkmgt_ptn_table* ptable, const char* na
         return 0;
     }
 
-    // Otherwise, we will need to add a new partition.
+    /* Otherwise, we will need to add a new partition. */
     if (ptable->count < DKMGT_MAX_PARTITIONS) {
         struct dkmgt_ptn_entry* entry = &ptable->partitions[ptable->count];
 
-        // Fill in the partition information.
+        /* Fill in the partition information. */
         memset(entry, 0, sizeof(struct dkmgt_ptn_entry));
         strncpy(entry->name, name, sizeof(entry->name));
         entry->name[sizeof(entry->name)-1] = '\0';
@@ -446,18 +444,19 @@ err:
     return -1;
 }
 
-/****************************************************************************
-  DKMGT Firmware Information
- ***************************************************************************/
+/*
+ * DKMGT Firmware Information
+ */
 static int dkmgt_fw_info_parse(const struct dkmgt_ptn_table* ptable, struct dkmgt_fw_info *fwinfo) {
     struct dkmgt_ptn_header hdr;
-    const char* data = dkmgt_ptn_lookup(ptable, "firmware-info", &hdr);
+    const void *data = dkmgt_ptn_lookup(ptable, "firmware-info", &hdr);
     if (!data) {
         data = dkmgt_ptn_lookup(ptable, "firmware-info.b", &hdr);
         if (!data) {
             return -1;
         }
     }
+
     cJSON *root = cJSON_ParseWithLength(data, hdr.length);
     if (!root) {
         fprintf(stderr, "Firmware info JSON malformed\n");
@@ -476,7 +475,7 @@ static int dkmgt_fw_info_parse(const struct dkmgt_ptn_table* ptable, struct dkmg
         }
         strncpy(fwinfo->firmware_id, cJSON_GetStringValue(fwid), sizeof(fwinfo->firmware_id));
 
-        // Parse the software version number.
+        /* Parse the software version number. */
         char* version = cJSON_GetStringValue(swver);
         char* end;
         fwinfo->ver_major = strtoul(version, &end, 10);
@@ -495,7 +494,7 @@ static int dkmgt_fw_info_parse(const struct dkmgt_ptn_table* ptable, struct dkmg
         }
         version = end+1;
 
-        // Parse the build numver.
+        /* Parse the build numver. */
         while (isspace(*version) || !isdigit(*version)) version++;
         fwinfo->timestamp = strtoul(version, &end, 10);
         if (!isspace(*end)) {
@@ -503,7 +502,7 @@ static int dkmgt_fw_info_parse(const struct dkmgt_ptn_table* ptable, struct dkmg
         }
         version = strchr(end, '.');
 
-        // Parse the release number.
+        /* Parse the release number. */
         if (version) {
             fwinfo->release = strtoul(version+1, &end, 10);
         }
@@ -517,7 +516,7 @@ static int dkmgt_fw_info_parse(const struct dkmgt_ptn_table* ptable, struct dkmg
 }
 
 static int dkmgt_fw_info_update(struct dkmgt_ptn_table* ptable, const struct dkmgt_fw_info *info) {
-    // Encode the firmware info to JSON.
+    /* Encode the firmware info to JSON. */
     size_t bufsize = 256;
     size_t offset = sizeof(struct dkmgt_ptn_header);
     char* buffer = malloc(bufsize);
@@ -526,17 +525,17 @@ static int dkmgt_fw_info_update(struct dkmgt_ptn_table* ptable, const struct dkm
             info->ver_major, info->ver_minor, info->ver_patch,
             info->timestamp, info->release, info->firmware_id);
 
-    // Build the partition header.
+    /* Build the partition header. */
     struct dkmgt_ptn_header* h = (struct dkmgt_ptn_header*)buffer;
     h->magic[0] = cpu_to_be32(DKMGT_PTN_MAGIC_0);
     h->magic[1] = cpu_to_be32(DKMGT_PTN_MAGIC_1);
     h->length = cpu_to_be32(len);
     h->checksum = 0;
 
-    // Update the partition table.
+    /* Update the partition table. */
     for (int i = 0; i < ptable->count; i++) {
         struct dkmgt_ptn_entry* entry = &ptable->partitions[i];
-        if ((strcmp(entry->name, "firmware-info") != 0) &&
+        if ((strcmp(entry->name, "firmware-info") != 0) ||
             (strcmp(entry->name, "firmware-info.b") != 0)) {
             continue;
         }
@@ -552,9 +551,9 @@ static int dkmgt_fw_info_update(struct dkmgt_ptn_table* ptable, const struct dkm
         return 0;
     }
 
-    // Add a new partition
+    /* Add a new partition. */
     if (ptable->count < DKMGT_MAX_PARTITIONS) {
-        struct dkmgt_ptn_entry* entry = &ptable->partitions[ptable->count];
+        struct dkmgt_ptn_entry *entry = &ptable->partitions[ptable->count];
         strcpy(entry->name, "firmware-info");
         entry->data = buffer;
         entry->size = len + offset;
@@ -578,12 +577,12 @@ void dkmgt_fw_info_dump(const struct dkmgt_fw_info *fwinfo, FILE *fp) {
     fprintf(fp, "\n");
 }
 
-/****************************************************************************
-  DKMGT Firmware Support List
- ***************************************************************************/
+/*
+ * DKMGT Firmware Support List
+ */
 int dkmgt_support_list_parse(const struct dkmgt_ptn_table* ptable, struct dkmgt_support_list *support) {
     struct dkmgt_ptn_header hdr;
-    const char* data = dkmgt_ptn_lookup(ptable, "support-list", &hdr);
+    const void *data = dkmgt_ptn_lookup(ptable, "support-list", &hdr);
     if (!data) {
         return -1;
     }
@@ -658,9 +657,9 @@ void dkmgt_support_list_dump(const struct dkmgt_support_list *support, FILE *fp)
     fprintf(fp, "\n");
 }
 
-/****************************************************************************
-  DKMGT Firmware Top Level Parsing
- ***************************************************************************/
+/*
+ * DKMGT Firmware Top Level Parsing
+ */
 struct dkmgt_firmware {
     struct dkmgt_fw_header header;
     struct dkmgt_ptn_table ptable;
@@ -686,7 +685,7 @@ struct dkmgt_firmware* dkmgt_firmware_new() {
     fw->header.header_len = sizeof(struct dkmgt_fw_header);
     fw->header.total_len = sizeof(struct dkmgt_fw_header) + DKMGT_PTN_BLOCK_SIZE;
 
-    // Fill out the firmware information with some defaults.
+    /* Fill out the firmware information with some defaults. */
     time_t now = time(0);
     struct tm utc;
     if (gmtime_r(&now, &utc)) {
@@ -725,7 +724,7 @@ struct dkmgt_firmware* dkmgt_firmware_parse(const void* data, size_t length) {
         fw->md5check = memcmp(digest, fw->header.md5hash, sizeof(digest)) ? "fail" : "okay";
     }
 
-    // Read the upgrade partiton table and the upgrade data block.
+    /* Read the upgrade partiton table and the upgrade data block. */
     if (fw->header.header_len + DKMGT_PTN_BLOCK_SIZE > length) {
         fprintf(stderr, "Partition table truncated\n");
         dkmgt_firmware_free(fw);
@@ -745,10 +744,10 @@ struct dkmgt_firmware* dkmgt_firmware_parse(const void* data, size_t length) {
 }
 
 int dkmgt_firmware_finalize(struct dkmgt_firmware *fw) {
-    // Update the firmware information partition.
+    /* Update the firmware information partition. */
     dkmgt_fw_info_update(&fw->ptable, &fw->info);
 
-    // Recompute the partition table base addresses.
+    /* Recompute the partition table base addresses. */
     size_t base = 0;
     for (int i = 0; i < fw->ptable.count; i++) {
         struct dkmgt_ptn_entry* entry = &fw->ptable.partitions[i];
@@ -756,13 +755,13 @@ int dkmgt_firmware_finalize(struct dkmgt_firmware *fw) {
         base += entry->size;
     }
 
-    // Encode the partition table into memory.
+    /* Encode the partition table into memory. */
     int err = dkmgt_ptn_table_encode(&fw->ptable, fw->ptable_block, sizeof(fw->ptable_block));
     if (err < 0) {
         return err;
     }
 
-    // Calculate the file size and checksum.
+    /* Calculate the file size and checksum. */
     fw->header.total_len = sizeof(struct dkmgt_fw_header) + sizeof(fw->ptable_block);
     MD5_CTX ctx;
     MD5_Init(&ctx);
@@ -779,7 +778,7 @@ int dkmgt_firmware_finalize(struct dkmgt_firmware *fw) {
 }
 
 int dkmgt_firmware_write(struct dkmgt_firmware *fw, FILE* fp) {
-    // Write the file header in big-endian
+    /* Write the file header in big-endian */
     struct dkmgt_fw_header hdr;
     memcpy(&hdr, &fw->header, sizeof(struct dkmgt_fw_header));
     for (int i = 0; i < 6; i++) {
@@ -796,13 +795,13 @@ int dkmgt_firmware_write(struct dkmgt_firmware *fw, FILE* fp) {
         return -1;
     }
 
-    // Write the partition table block.
+    /* Write the partition table block. */
     if (fwrite(fw->ptable_block, sizeof(fw->ptable_block), 1, fp) < 1) {
         fprintf(stderr, "Failed to write partition table: %s", strerror(errno));
         return -1;
     }
 
-    // Write the partitions
+    /* Write the partitions */
     for (int i = 0; i < fw->ptable.count; i++) {
         struct dkmgt_ptn_entry* entry = &fw->ptable.partitions[i];
         if (fwrite(entry->data, entry->size, 1, fp) < 1) {
@@ -819,16 +818,16 @@ void dkmgt_firmware_dump(const struct dkmgt_firmware *fw, FILE *fp) {
     dkmgt_ptn_table_dump(&fw->ptable, fp);
     dkmgt_fw_info_dump(&fw->info, fp);
 
-    // Parse and display the support list.
+    /* Parse and display the support list, if present. */
     struct dkmgt_support_list support;
     if (dkmgt_support_list_parse(&fw->ptable, &support) >= 0) {
         dkmgt_support_list_dump(&support, fp);
     }
 }
 
-/****************************************************************************
-  DKMGT Firwmware Util Program
- ***************************************************************************/
+/*
+ * DKMGT Firwmware Util Program
+ */
 static void print_usage(int argc, char** argv, FILE* fp) {
     fprintf(fp, "Usage: %s [options] FIRMWARE\n", argv[0]);
 
@@ -852,13 +851,13 @@ static void print_usage(int argc, char** argv, FILE* fp) {
 
 }
 
+/* Generate the short options from the long options. */
 static char* gen_shortopts(const struct option* opts) {
-    // Count the number of long options.
     int count = 0;
     while (opts[count].name) {
         count++;
     }
-    char* buffer = malloc(count * 2);
+    char* buffer = malloc(count * 2 + 1);
     char* ptr = buffer;
     for (int i = 0; i < count; i++) {
         if (!isalpha(opts[i].val)) {
@@ -873,12 +872,14 @@ static char* gen_shortopts(const struct option* opts) {
     return buffer;
 }
 
-// When extracting partition contents, try to guess the file extension
-// by peeking at the partition contents. 
+/*
+ * When extracting partition contents, try to guess the file extension
+ * by peeking at the partition contents.
+ */
 static const char* guess_ptn_file_ext(const void* data, size_t length) {
     uint32_t magic = be32_to_cpu(*(const uint32_t*)data);
     if ((magic & 0xffffff00) == 0x1f8b0800) {
-        // Looks and smells like gzip.
+        /* Looks and smells like gzip. */
         return ".gz";
     }
 
@@ -888,17 +889,17 @@ static const char* guess_ptn_file_ext(const void* data, size_t length) {
             return ".squashfs";
 
         case 0xd00dfeed:{
-            // Flattened device tree - but we should check if a kernel image follows.
+            /* Flattened device tree - but we should check if a kernel image follows. */
             uint32_t fdtlen = be32_to_cpu(*(const uint32_t*)(data + 4));
             if (fdtlen >= length) {
                 return ".dtb";
             }
-            // There's more data here a kernel image probably follows
+            /* There's more data here a kernel image probably follows. */
             return ".bin";
         }
 
         default:
-            // If all else fails, just call it a binary file.
+            /* If all else fails, just call it a binary file. */
             return ".bin";
     }
 }
@@ -913,7 +914,7 @@ int do_extract(struct dkmgt_firmware* fw, const char* filename) {
 
     dkmgt_firmware_dump(fw, stdout);
 
-    // Create a directory for the firmware contents.
+    /* Create a directory for the firmware contents. */
     const char* dirsep = strrchr(filename, '/');
     dirname = strdup((dirsep) ? dirsep+1 : filename);
     char* ext = strrchr(dirname, '.');
@@ -928,21 +929,22 @@ int do_extract(struct dkmgt_firmware* fw, const char* filename) {
         }
     }
 
-    // Extract the firmware contents
+    /* Extract the firmware contents */
     for (int i = 0; i < fw->ptable.count; i++) {
         struct dkmgt_ptn_entry *entry = &fw->ptable.partitions[i];
 
-        // Use the partition name for the filename.
+        /* Use the partition name for the filename. */
         char partfile[dirlen + sizeof(entry->name) + 16];
         snprintf(partfile, sizeof(partfile), "%s/%s", dirname, entry->name);
 
-        // Strip off the ".b" suffix, if present.
+        /* Strip off the ".b" suffix, if present. */
         size_t len = strlen(partfile);
         if ((len > 2) && (partfile[len-1] == 'b') && (partfile[len-2] == '.')) {
             partfile[len-2] = '\0';
         }
 
-        // If a valid partition header exists - parse it as JSON.
+        /* If a valid partition header exists - parse it as JSON. */
+        
         struct dkmgt_ptn_header header;
         const void* data = dkmgt_ptn_parse(entry, &header);
         if (data) {
@@ -954,7 +956,7 @@ int do_extract(struct dkmgt_firmware* fw, const char* filename) {
             strcat(partfile, guess_ptn_file_ext(entry->data, header.length));
         }
 
-        // Write the file to disk.
+        /* Write the file to disk. */
         FILE* wfp = fopen(partfile, "w+b");
         if (!wfp) {
             fprintf(stderr, "Unable to create %s: %s\n", partfile, strerror(errno));
@@ -978,7 +980,6 @@ int do_write(struct dkmgt_firmware *fw, const char* filename) {
     dkmgt_firmware_finalize(fw);
     dkmgt_firmware_dump(fw, stderr);
 
-    // If no output file is specified, write it back
     if (strcmp(filename, "-") == 0) {
         return (dkmgt_firmware_write(fw, stdout) < 0) ? EXIT_FAILURE : EXIT_SUCCESS;
     }
@@ -995,12 +996,12 @@ int do_write(struct dkmgt_firmware *fw, const char* filename) {
 }
 
 int do_update(struct dkmgt_firmware *fw, const char* partname, const char* filename) {
-    // Delete the partition if no file contents were specified.
+    /* Delete the partition if no file contents were specified. */
     if (!filename) {
         return dkmgt_ptn_table_delete(&fw->ptable, partname);
     }
 
-    // If no partition name was specified, guess it from the filename.
+    /* If no partition name was specified, guess it from the filename. */
     char autopartname[32];
     if (!partname) {
         char* dirsep = strrchr(filename, '/');
@@ -1048,7 +1049,7 @@ int main(int argc, char** argv) {
     const char *outfile = NULL;
     bool do_create = false;
 
-    // Updates to be made to the partition table.
+    /* Updates to be made to the firmware file. */
     const char* update_swver = NULL;
     const char* update_fwid = NULL;
     const char* update_rev = NULL;
@@ -1064,7 +1065,6 @@ int main(int argc, char** argv) {
         }
 
         switch (c) {
-            case 0:
             case 'p':
                 action = do_print;
                 break;
@@ -1089,7 +1089,6 @@ int main(int argc, char** argv) {
                     updates[update_count].partname = optarg;
                     updates[update_count].filename = eq+1;
                 } else {
-                    // TODO: Guess the partiton name.
                     updates[update_count].partname = NULL;
                     updates[update_count].filename = optarg;
                 }
@@ -1150,6 +1149,7 @@ int main(int argc, char** argv) {
                 print_usage(argc, argv, stdout);
                 return EXIT_SUCCESS;
 
+            case '?':
             default:
                 print_usage(argc, argv, stderr);
                 return EXIT_FAILURE;
@@ -1159,7 +1159,7 @@ int main(int argc, char** argv) {
         has_updates = true;
     }
 
-    // Read the firmware, or create a new one.
+    /* Read the firmware file, or create a new one. */
     if (argc <= optind) {
         fprintf(stderr, "Missing argument: FILENAME\n");
         return EXIT_FAILURE;
@@ -1169,7 +1169,7 @@ int main(int argc, char** argv) {
     if (do_create) {
         fw = dkmgt_firmware_new();
     } else {
-        // Map the firmware into memory and begin parsing.
+        /* Map the firmware into memory and begin parsing. */
         size_t fwsize;
         void* fwdata = map_file(filename, &fwsize);
         if (fwdata == MAP_FAILED) {
@@ -1178,12 +1178,13 @@ int main(int argc, char** argv) {
         }
 
         fw = dkmgt_firmware_parse(fwdata, fwsize);
+        munmap(fwdata, fwsize);
     }
     if (!fw) {
         return EXIT_FAILURE;
     }
 
-    // Apply updates to the firmware contents.
+    /* Apply updates to the firmware contents. */
     while (update_swver) {
         char* endp;
         fw->info.ver_major = strtoul(update_swver, &endp, 10);
@@ -1204,7 +1205,7 @@ int main(int argc, char** argv) {
         break;
     }
     if (update_rev) {
-        // Skip leading aphabetical chars, if any.
+        /* Skip leading aphabetical chars, if any. */
         const char* p = update_rev;
         while (isalpha(*p)) p++;
         fw->info.release = strtoul(p, NULL, 10);
@@ -1214,7 +1215,6 @@ int main(int argc, char** argv) {
         fw->info.firmware_id[sizeof(fw->info.firmware_id)-1] = '\0';
     }
     for (int i = 0; i < update_count; i++) {
-        // Delete the partition if no contents were provided.
         if (do_update(fw, updates[i].partname, updates[i].filename) < 0) {
             return EXIT_FAILURE;
         }
@@ -1229,7 +1229,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Write the firmware file back out.
+    /* Write the firmware file back out. */
     if (!outfile) {
         outfile = filename;
     }
