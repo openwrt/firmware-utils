@@ -298,7 +298,6 @@ static void dkmgt_ptn_table_dump(const struct dkmgt_ptn_table* ptable, FILE *fp)
 
 const void* dkmgt_ptn_parse(const struct dkmgt_ptn_entry *entry, struct dkmgt_ptn_header *hdr) {
     if (entry->size < sizeof(struct dkmgt_ptn_header)) {
-        fprintf(stderr, "Partition \'%s\' header truncated\n", entry->name);
         return NULL;
     }
 
@@ -309,20 +308,34 @@ const void* dkmgt_ptn_parse(const struct dkmgt_ptn_entry *entry, struct dkmgt_pt
     hdr->checksum = be32_to_cpu(hdr->checksum);
     if ((hdr->magic[0] != DKMGT_PTN_MAGIC_0) || (hdr->magic[1] != DKMGT_PTN_MAGIC_1) ||
         (hdr->length > (entry->size - sizeof(struct dkmgt_ptn_header)))) {
-        fprintf(stderr, "Partition \'%s\' has invalid header\n", entry->name);
         return NULL;
     }
 
     return entry->data + sizeof(struct dkmgt_ptn_header);
 }
 
-const void* dkmgt_ptn_lookup(const struct dkmgt_ptn_table* ptable, const char* name, struct dkmgt_ptn_header *hdr) {
+cJSON* dkmgt_ptn_parse_json(const struct dkmgt_ptn_entry *entry) {
+    struct dkmgt_ptn_header hdr;
+    const void *data = dkmgt_ptn_parse(entry, &hdr);
+    if (!data) {
+        fprintf(stderr, "Partition \'%s\' has invalid header\n", entry->name);
+        return NULL;
+    }
+
+    cJSON *root = cJSON_ParseWithLength(data, hdr.length);
+    if (!root) {
+        fprintf(stderr, "Partition \'%s\' has malformed JSON\n", entry->name);
+    }
+    return root;
+}
+
+struct dkmgt_ptn_entry* dkmgt_ptn_lookup(const struct dkmgt_ptn_table* ptable, const char* name) {
     for (int i = 0; i < ptable->count; i++) {
         const struct dkmgt_ptn_entry* entry = &ptable->partitions[i];
         if (strncmp(name, entry->name, sizeof(entry->name)) != 0) {
             continue;
         }
-        return dkmgt_ptn_parse(entry, hdr);
+        return (struct dkmgt_ptn_entry*)entry;
     }
     return NULL;
 }
@@ -401,11 +414,8 @@ static int dkmgt_ptn_table_update(struct dkmgt_ptn_table* ptable, const char* na
     }
 
     /* Check for an existing partition with the same name. */
-    for (int i = 0; i < ptable->count; i++) {
-        struct dkmgt_ptn_entry* entry = &ptable->partitions[i];
-        if (strcmp(ptable->partitions[i].name, name) != 0) {
-            continue;
-        }
+    struct dkmgt_ptn_entry* entry = dkmgt_ptn_lookup(ptable, name);
+    if (entry) {
         if (entry->memtype == DKMGT_PTN_MEM_HEAP) {
             free(entry->data);
         } else if (entry->memtype == DKMGT_PTN_MEM_MMAP) {
@@ -420,7 +430,7 @@ static int dkmgt_ptn_table_update(struct dkmgt_ptn_table* ptable, const char* na
 
     /* Otherwise, we will need to add a new partition. */
     if (ptable->count < DKMGT_MAX_PARTITIONS) {
-        struct dkmgt_ptn_entry* entry = &ptable->partitions[ptable->count];
+        entry = &ptable->partitions[ptable->count];
 
         /* Fill in the partition information. */
         memset(entry, 0, sizeof(struct dkmgt_ptn_entry));
@@ -448,18 +458,15 @@ err:
  * DKMGT Firmware Information
  */
 static int dkmgt_fw_info_parse(const struct dkmgt_ptn_table* ptable, struct dkmgt_fw_info *fwinfo) {
-    struct dkmgt_ptn_header hdr;
-    const void *data = dkmgt_ptn_lookup(ptable, "firmware-info", &hdr);
-    if (!data) {
-        data = dkmgt_ptn_lookup(ptable, "firmware-info.b", &hdr);
-        if (!data) {
+    struct dkmgt_ptn_entry* entry = dkmgt_ptn_lookup(ptable, "firmware-info");
+    if (!entry) {
+        entry = dkmgt_ptn_lookup(ptable, "firmware-info.b");
+        if (!entry) {
             return -1;
         }
     }
-
-    cJSON *root = cJSON_ParseWithLength(data, hdr.length);
+    cJSON *root = dkmgt_ptn_parse_json(entry);
     if (!root) {
-        fprintf(stderr, "Firmware info JSON malformed\n");
         return -1;
     }
 
@@ -533,12 +540,8 @@ static int dkmgt_fw_info_update(struct dkmgt_ptn_table* ptable, const struct dkm
     h->checksum = 0;
 
     /* Update the partition table. */
-    for (int i = 0; i < ptable->count; i++) {
-        struct dkmgt_ptn_entry* entry = &ptable->partitions[i];
-        if ((strcmp(entry->name, "firmware-info") != 0) ||
-            (strcmp(entry->name, "firmware-info.b") != 0)) {
-            continue;
-        }
+    struct dkmgt_ptn_entry* entry = dkmgt_ptn_lookup(ptable, "firmware-info");
+    if (entry) {
         if (entry->memtype == DKMGT_PTN_MEM_HEAP) {
             free(entry->data);
         } else if (entry->memtype == DKMGT_PTN_MEM_MMAP) {
@@ -549,11 +552,20 @@ static int dkmgt_fw_info_update(struct dkmgt_ptn_table* ptable, const struct dkm
         entry->base = UINT32_MAX;
         entry->memtype = DKMGT_PTN_MEM_HEAP;
         return 0;
-    }
-
-    /* Add a new partition. */
-    if (ptable->count < DKMGT_MAX_PARTITIONS) {
-        struct dkmgt_ptn_entry *entry = &ptable->partitions[ptable->count];
+    } else if ((entry = dkmgt_ptn_lookup(ptable, "firmware-info.b")) != NULL) {
+        if (entry->memtype == DKMGT_PTN_MEM_HEAP) {
+            free(entry->data);
+        } else if (entry->memtype == DKMGT_PTN_MEM_MMAP) {
+            munmap(entry->data, entry->size);
+        }
+        entry->data = buffer;
+        entry->size = len + offset;
+        entry->base = UINT32_MAX;
+        entry->memtype = DKMGT_PTN_MEM_HEAP;
+        return 0;
+    } else if (ptable->count < DKMGT_MAX_PARTITIONS) {
+        /* Add a new partition. */
+        entry = &ptable->partitions[ptable->count];
         strcpy(entry->name, "firmware-info");
         entry->data = buffer;
         entry->size = len + offset;
@@ -581,15 +593,12 @@ void dkmgt_fw_info_dump(const struct dkmgt_fw_info *fwinfo, FILE *fp) {
  * DKMGT Firmware Support List
  */
 int dkmgt_support_list_parse(const struct dkmgt_ptn_table* ptable, struct dkmgt_support_list *support) {
-    struct dkmgt_ptn_header hdr;
-    const void *data = dkmgt_ptn_lookup(ptable, "support-list", &hdr);
-    if (!data) {
+    struct dkmgt_ptn_entry* entry = dkmgt_ptn_lookup(ptable, "support-list");
+    if (!entry) {
         return -1;
     }
-
-    cJSON *root = cJSON_ParseWithLength(data, hdr.length);
+    cJSON *root = dkmgt_ptn_parse_json(entry);
     if (!root) {
-        fprintf(stderr, "Support list JSON malformed\n");
         return -1;
     }
     if (!root || !cJSON_IsObject(root)) {
