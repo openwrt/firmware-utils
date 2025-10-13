@@ -477,6 +477,11 @@ int main(int argc, char **argv)
 		generate_vendorkey_dimgkey(enk_covrx1860, sizeof(enk_covrx1860), &vendor_key[0]);
 		rsa_private_bio = BIO_new_mem_buf(key_covrx1860_pem, -1);
 	}
+	else if (strncmp(argv[1], "DIR-X1860-B1", 12) == 0)
+	{
+		generate_vendorkey_dimgkey(enk_dirx1860b1, sizeof(enk_dirx1860b1), &vendor_key[0]);
+		rsa_private_bio = BIO_new_mem_buf(key_dirx1860b1_pem, -1);
+	}
 	else if (strncmp(argv[1], "DIR-X3260", 9) == 0)
 	{
 		generate_vendorkey_dimgkey(enk_dirx3260, sizeof(enk_dirx3260), &vendor_key[0]);

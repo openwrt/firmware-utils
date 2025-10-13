@@ -21,6 +21,13 @@ const unsigned char enk_covrx1860[] =
 
 /*
   enk.txt as found in GPL tarball:
+  DIR-X1550_GPL_Release/MTK7621_AX1800_BASE/vendors/DIR-X1860/imgkey/enk.txt
+*/
+const unsigned char enk_dirx1860b1[] =
+  "NE1oOC1lKzk9NjA4KWQhLW07dzR+PTIzZTQuMTk4NyxpNWFyZHEzZCVeJjEqMm5aMDY4MSQ4";
+
+/*
+  enk.txt as found in GPL tarball:
   DIR-X3260_GPL_Release/MTK7621_AX1800_BASE/vendors/DIR-X3260/imgkey/enk.txt
 */
 const unsigned char enk_dirx3260[] =
@@ -280,6 +287,67 @@ a3ZJmRn3q/h3e4AUEJ2pyj6HNKviz69bs2JNEw3UKY0muwCJEZaC9vAXIss8FeIB\n\
 HZKqQC2gv0rjK2RCLVc6cba9/G9tzzx12tOOsQUj/u7mBENKOh+KRNJJ/r9w2zcU\n\
 B98kPyJI9kjBX2P6U7OE2vNe6djiGOscjuDHyXicaDvMY+1veQEBiDtTXwCvSIo1\n\
 dJRYMuMfi+aitz9LQOky3yTHTDWZuRhK0b4JNkZYM1F9v8zGhMR4poDrRLsLb9t9\n\
+-----END RSA PRIVATE KEY-----";
+
+/*
+  key.pem as found in GPL tarball, e.g.:
+  DIR-X1550_GPL_Release/MTK7621_AX1800_BASE/vendors/DIR-X1860/imgkey/key.pem
+  encrypted with passphrase: "12345678"
+*/
+const unsigned char key_dirx1860b1_pem[] = "\n\
+-----BEGIN RSA PRIVATE KEY-----\n\
+Proc-Type: 4,ENCRYPTED\n\
+DEK-Info: AES-256-CBC,E93E4C5229B42088C26BEDD942B11744\n\
+\n\
+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\n\
 -----END RSA PRIVATE KEY-----";
 
 /*
