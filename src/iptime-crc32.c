@@ -59,6 +59,7 @@ struct board_info boards[] = {
 	{ .model = "ax6000m", .payload_offset = 0x38 },
 	{ .model = "ax7800m", .payload_offset = 0x38 },
 	{ .model = "ax8004m", .payload_offset = 0x38 },
+	{ .model = "ax3kse", .payload_offset = 0x38 },
 	{ .model = "ax3ksm", .payload_offset = 0x38 },
 	{ /* sentinel */ }
 };
