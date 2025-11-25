@@ -1010,6 +1010,53 @@ static struct device_info boards[] = {
 		.last_sysupgrade_partition = "file-system",
 	},
 
+	/** Firmware layout for the Archer AX21 v4 */
+	{
+		.id	= "ARCHER-AX21-V4",
+		.vendor = "",
+		.support_list =
+			"SupportList:\n"
+			"{product_name:Archer AX23,product_ver:1.0.0,special_id:55530000}\n"
+			"{product_name:Archer AX23,product_ver:1.20,special_id:55530000}\n"
+			"{product_name:Archer AX1800,product_ver:4.6,special_id:55530000}\n"
+			"{product_name:Archer AX23,product_ver:1.0.0,special_id:43410000}\n"
+			"{product_name:Archer AX23,product_ver:1.20,special_id:43410000}\n"
+			"{product_name:Archer AX23,product_ver:1.0.0,special_id:54570000}\n"
+			"{product_name:Archer AX23,product_ver:1.20,special_id:54570000}\n"
+			"{product_name:Archer AX20,product_ver:4.6,special_id:55530000}\n"
+			"{product_name:Archer AX21,product_ver:4.6,special_id:55530000}\n",
+		.part_trail = 0x00,
+		.soft_ver = SOFT_VER_TEXT("1.0.5\n"),
+
+		.partitions = {
+			{"fs-uboot", 0x00000, 0x40000},
+			{"os-image", 0x40000, 0x400000},
+			{"file-system", 0x440000, 0xb60000},
+			{"default-mac", 0xfa0000, 0x00200},
+			{"pin", 0xfa0200, 0x00100},
+			{"device-id", 0xfa0300, 0x00100},
+			{"product-info", 0xfa0400, 0x0fc00},
+			{"default-config", 0xfb0000, 0x08000},
+			{"ap-def-config", 0xfb8000, 0x08000},
+			{"user-config", 0xfc0000, 0x0a000},
+			{"ag-config", 0xfca000, 0x04000},
+			{"certificate", 0xfce000, 0x02000},
+			{"ap-config", 0xfd0000, 0x06000},
+			{"router-config", 0xfd6000, 0x06000},
+			{"favicon", 0xfdc000, 0x02000},
+			{"logo", 0xfde000, 0x02000},
+			{"partition-table", 0xfe0000, 0x00800},
+			{"soft-version", 0xfe0800, 0x00100},
+			{"support-list", 0xfe0900, 0x00400},
+			{"profile", 0xfe0d00, 0x03000},
+			{"extra-para", 0xfe3d00, 0x00100},
+			{"radio",0xff0000, 0x10000},
+		},
+
+		.first_sysupgrade_partition = "os-image",
+		.last_sysupgrade_partition = "file-system",
+	},
+
 	/** Firmware layout for the Archer AX23 v1 */
 	{
 		.id     = "ARCHER-AX23-V1",
@@ -3910,6 +3957,7 @@ static void build_image(const char *output,
 	if (strcasecmp(info->id, "ARCHER-A6-V3") == 0 ||
 	    strcasecmp(info->id, "ARCHER-A7-V5") == 0 ||
 	    strcasecmp(info->id, "ARCHER-A9-V6") == 0 ||
+	    strcasecmp(info->id, "ARCHER-AX21-V4") == 0 ||
 	    strcasecmp(info->id, "ARCHER-AX23-V1") == 0 ||
 	    strcasecmp(info->id, "ARCHER-C2-V3") == 0 ||
 	    strcasecmp(info->id, "ARCHER-C7-V4") == 0 ||
