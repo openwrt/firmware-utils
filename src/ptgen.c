@@ -131,6 +131,7 @@ struct partinfo {
 	bool has_guid;
 	guid_t guid;
 	uint64_t gattr;  /* GPT partition attributes */
+	unsigned part_index; /* index of GPT entry to be used */
 };
 
 /* GPT Partition table header */
@@ -170,6 +171,7 @@ int kb_align = 0;
 bool ignore_null_sized_partition = false;
 bool use_guid_partition_table = false;
 struct partinfo parts[GPT_ENTRY_MAX];
+bool entry_used[GPT_ENTRY_MAX] = { false };
 char *filename = NULL;
 
 int gpt_split_image = false;
@@ -422,7 +424,7 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 	uint64_t start, end;
 	uint64_t sect = GPT_SIZE + gpt_first_entry_sector;
 	int fd, ret = -1;
-	unsigned i, pmbr = 1;
+	unsigned i, index, pmbr = 1;
 	char img_name[strlen(filename) + 20];
 
 	memset(pte, 0, sizeof(struct pte) * MBR_ENTRY_MAX);
@@ -452,13 +454,15 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 				return ret;
 		}
 		parts[i].actual_start = start;
-		gpte[i].start = cpu_to_le64(start);
+
+		index = parts[i].part_index;
+		gpte[index].start = cpu_to_le64(start);
 
 		sect = start + parts[i].size * 2;
-		gpte[i].end = cpu_to_le64(sect -1);
-		gpte[i].guid = guid;
-		gpte[i].guid.b[sizeof(guid_t) -1] += i + 1;
-		gpte[i].type = parts[i].guid;
+		gpte[index].end = cpu_to_le64(sect -1);
+		gpte[index].guid = guid;
+		gpte[index].guid.b[sizeof(guid_t) -1] += i + 1;
+		gpte[index].type = parts[i].guid;
 
 		if (parts[i].hybrid && pmbr < MBR_ENTRY_MAX) {
 			pte[pmbr].active = ((i + 1) == active) ? 0x80 : 0;
@@ -469,16 +473,16 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 			to_chs(sect - 1, pte[1].chs_end);
 			pmbr++;
 		}
-		gpte[i].attr = parts[i].gattr;
+		gpte[index].attr = parts[i].gattr;
 
 		if (parts[i].name)
-			init_utf16(parts[i].name, (uint16_t *)gpte[i].name, GPT_ENTRY_NAME_SIZE / sizeof(uint16_t));
+			init_utf16(parts[i].name, (uint16_t *)gpte[index].name, GPT_ENTRY_NAME_SIZE / sizeof(uint16_t));
 
 		if ((i + 1) == (unsigned)active)
-			gpte[i].attr |= GPT_ATTR_LEGACY_BOOT;
+			gpte[index].attr |= GPT_ATTR_LEGACY_BOOT;
 
 		if (parts[i].required)
-			gpte[i].attr |= GPT_ATTR_PLAT_REQUIRED;
+			gpte[index].attr |= GPT_ATTR_PLAT_REQUIRED;
 
 		if (verbose)
 			fprintf(stderr, "Partition %d: start=%" PRIu64 ", end=%" PRIu64 ", size=%"  PRIu64 "\n",
@@ -489,7 +493,8 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 		printf("%" PRIu64 "\n", (sect - start) * DISK_SECTOR_SIZE);
 	}
 
-	if (parts[0].actual_start > gpt_first_entry_sector + GPT_SIZE) {
+	if (parts[0].actual_start > gpt_first_entry_sector + GPT_SIZE &&
+	    !entry_used[GPT_ENTRY_MAX - 1]) {
 		gpte[GPT_ENTRY_MAX - 1].start = cpu_to_le64(gpt_first_entry_sector + GPT_SIZE);
 		gpte[GPT_ENTRY_MAX - 1].end = cpu_to_le64(parts[0].actual_start - 1);
 		gpte[GPT_ENTRY_MAX - 1].type = GUID_PARTITION_BIOS_BOOT;
@@ -620,7 +625,7 @@ static void usage(char *prog)
 {
 	fprintf(stderr, "Usage: %s [-v] [-n] [-b] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
 			"          [-a <part number>] [-l <align kB>] [-G <guid>]\n"
-			"          [-e <gpt_entry_offset>] [-d <gpt_disk_size>]\n"
+			"          [-e <gpt_entry_offset>] [-i <gpt_entry_index>] [-d <gpt_disk_size>]\n"
 			"          [[-t <type> | -T <GPT part type>] [-r] [-N <name>] -p <size>[@<start>]...] \n", prog);
 
 	exit(EXIT_FAILURE);
@@ -653,6 +658,7 @@ int main (int argc, char **argv)
 	char *p;
 	int ch;
 	int part = 0;
+	unsigned part_index = 0;
 	char *name = NULL;
 	unsigned short int hybrid = 0, required = 0;
 	uint64_t total_sectors;
@@ -660,7 +666,7 @@ int main (int argc, char **argv)
 	guid_t guid = GUID_INIT( signature, 0x2211, 0x4433, \
 			0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0x00);
 
-	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:vnbHN:gl:rS:G:e:d:")) != -1) {
+	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:vnbHN:gl:rS:G:e:d:i:")) != -1) {
 		switch (ch) {
 		case 'o':
 			filename = optarg;
@@ -719,6 +725,11 @@ int main (int argc, char **argv)
 				fputs("Too many partitions\n", stderr);
 				exit(EXIT_FAILURE);
 			}
+			if (entry_used[part_index]) {
+				fprintf(stderr, "Partition entry with index %d already defined\n", part_index);
+				exit(EXIT_FAILURE);
+			}
+
 			p = strchr(optarg, '@');
 			if (p) {
 				*(p++) = 0;
@@ -731,6 +742,7 @@ int main (int argc, char **argv)
 			parts[part].required = required;
 			parts[part].name = name;
 			parts[part].hybrid = hybrid;
+			parts[part].part_index = part_index;
 			fprintf(stderr, "part %lld %lld\n", parts[part].start, parts[part].size);
 			parts[part++].type = type;
 			/*
@@ -740,12 +752,27 @@ int main (int argc, char **argv)
 			name = NULL;
 			required = 0;
 			hybrid = 0;
+
+			/* mark index as used, switch to next index */
+			entry_used[part_index++] = true;
+			if (part_index > GPT_ENTRY_MAX - 1 ||
+			    (!use_guid_partition_table && part_index > 3))
+				part_index = 0;
+
 			break;
 		case 'N':
 			name = optarg;
 			break;
 		case 'r':
 			required = 1;
+			break;
+		case 'i':
+			part_index = (int)strtoul(optarg, NULL, 0);
+			if (part_index > GPT_ENTRY_MAX - 1 ||
+			    (!use_guid_partition_table && part_index > 3)) {
+				fprintf(stderr, "Too big GPT/MBR entry index %d\n", part_index);
+				exit(EXIT_FAILURE);
+			}
 			break;
 		case 't':
 			type = (char)strtoul(optarg, NULL, 16);
