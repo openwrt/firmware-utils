@@ -170,6 +170,7 @@ int sectors = -1;
 int kb_align = 0;
 bool ignore_null_sized_partition = false;
 bool use_guid_partition_table = false;
+bool allow_stub_partition = true;
 struct partinfo parts[GPT_ENTRY_MAX];
 bool entry_used[GPT_ENTRY_MAX] = { false };
 char *filename = NULL;
@@ -494,7 +495,7 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 	}
 
 	if (parts[0].actual_start > gpt_first_entry_sector + GPT_SIZE &&
-	    !entry_used[GPT_ENTRY_MAX - 1]) {
+	    allow_stub_partition && !entry_used[GPT_ENTRY_MAX - 1]) {
 		gpte[GPT_ENTRY_MAX - 1].start = cpu_to_le64(gpt_first_entry_sector + GPT_SIZE);
 		gpte[GPT_ENTRY_MAX - 1].end = cpu_to_le64(parts[0].actual_start - 1);
 		gpte[GPT_ENTRY_MAX - 1].type = GUID_PARTITION_BIOS_BOOT;
@@ -623,7 +624,7 @@ fail:
 
 static void usage(char *prog)
 {
-	fprintf(stderr, "Usage: %s [-v] [-n] [-b] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
+	fprintf(stderr, "Usage: %s [-v] [-n] [-D] [-b] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
 			"          [-a <part number>] [-l <align kB>] [-G <guid>]\n"
 			"          [-e <gpt_entry_offset>] [-i <gpt_entry_index>] [-d <gpt_disk_size>]\n"
 			"          [[-t <type> | -T <GPT part type>] [-r] [-N <name>] -p <size>[@<start>]...] \n", prog);
@@ -666,13 +667,16 @@ int main (int argc, char **argv)
 	guid_t guid = GUID_INIT( signature, 0x2211, 0x4433, \
 			0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0x00);
 
-	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:vnbHN:gl:rS:G:e:d:i:")) != -1) {
+	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:DvnbHN:gl:rS:G:e:d:i:")) != -1) {
 		switch (ch) {
 		case 'o':
 			filename = optarg;
 			break;
 		case 'v':
 			verbose++;
+			break;
+		case 'D':
+			allow_stub_partition = false;
 			break;
 		case 'n':
 			ignore_null_sized_partition = true;
