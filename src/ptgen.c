@@ -23,6 +23,7 @@
 #include <inttypes.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <getopt.h>
 #include "cyg_crc.h"
 
 #if __BYTE_ORDER == __BIG_ENDIAN
@@ -624,10 +625,35 @@ fail:
 
 static void usage(char *prog)
 {
-	fprintf(stderr, "Usage: %s [-v] [-n] [-D] [-b] [-g] -h <heads> -s <sectors> -o <outputfile>\n"
-			"          [-a <part number>] [-l <align kB>] [-G <guid>]\n"
-			"          [-e <gpt_entry_offset>] [-i <gpt_entry_index>] [-d <gpt_disk_size>]\n"
-			"          [[-t <type> | -T <GPT part type>] [-r] [-N <name>] -p <size>[@<start>]...] \n", prog);
+	fprintf(stderr, "Usage: %s [OPTION]...\n"
+			"Generate hard drive image with predefined partitions\n"
+			"\n"
+			"Mandatory arguments to long options are mandatory for short options too.\n"
+			"  -?, --help                      display this help and exit\n"
+			"  -v, --verbose                   enable vervose output\n"
+			"  -l, --alignment=SIZE            align partition boundaries to SIZE Kbytes\n"
+			"  -n, --ignore-null-sized-parts   do not create null sized partitions\n"
+			"  -D, --disable-gpt-stub-part     do not fill a gap before 1-st GPT partition\n"
+			"  -o, --output=FILENAME           write an image to a file FILENAME\n"
+			"  -h, --heads=COUNT               use CHS scheme, defines heads number\n"
+			"  -s, --sectors=COUNT             use CHS scheme, defines sectors count\n"
+			"  -S, --mbr-disk-signature=VALUE  defines MBR disk signature [default: 0x5452574F ('OWRT')]\n"
+			"  -a, --active-part=PART_NUMBER   defines active (boot) partition\n"
+			"  -g, --gpt                       use GPT instead of MBR\n"
+			"  -G, --gpt-guid=GUID             defines custom GPT GUID\n"
+			"  -e, --gpt-entry-offset=OFFSET   defines custom placement of GPT Entry table (default: 1K)\n"
+			"  -d, --gpt-disk-size=SIZE        defines total size of disk image (used for ALT GPT headers)\n"
+			"  -b, --gpt-split-images          generate 2 or 3 images (depends on entry table placement):\n"
+			"                                    GPT header + GPT Entry Table, Alt Entry Table + ALT Header\n"
+			"                                    GPT header,  GPT Entry Table, Alt Entry Table + ALT Header\n"
+			"  -p, --part=SIZE[@START]         defines partition of size SIZE, started at offset START\n"
+			"  -t, --mbr-part-type=TYPE        defines partition type by MBR partition type\n"
+			"  -T, --gpt-part-type=TYPE_NAME   defines partinion type by GPT type name\n"
+			"  -N, --gpt-part-name=NAME        defines GPT partition name\n"
+			"  -r, --gpt-part-attr-required    mark partition with GPT required attribute\n"
+			"  -H, --gpt-part-hybrid           put GPT partition to the MBR as well\n"
+			"  -i, --gpt-part-index=INDEX      use custom INDEX for the partition in the GPT Entry Table\n",
+			prog);
 
 	exit(EXIT_FAILURE);
 }
@@ -667,7 +693,39 @@ int main (int argc, char **argv)
 	guid_t guid = GUID_INIT( signature, 0x2211, 0x4433, \
 			0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0x00);
 
-	while ((ch = getopt(argc, argv, "h:s:p:a:t:T:o:DvnbHN:gl:rS:G:e:d:i:")) != -1) {
+	while (1) {
+		int option_index = 0;
+		static struct option long_options[] = {
+			{"help",			no_argument,		0,	'?'},
+			{"verbose",			no_argument,		0,	'v'},
+			{"kb_alignment",		required_argument,	0,	'l'},
+			{"ignore-null-sized-parts",	no_argument,		0,	'n'},
+			{"disable-gpt-stub-part",	no_argument,		0,	'D'},
+			{"output",			required_argument,	0,	'o'},
+			{"heads",			required_argument,	0,	'h'},
+			{"sectors",			required_argument,	0,	's'},
+			{"mbr-disk-signature",		required_argument,	0,	'S'},
+			{"active-part",			required_argument,	0,	'a'},
+			{"gpt",				no_argument,		0,	'g'},
+			{"gpt-guid",			required_argument,	0,	'G'},
+			{"gpt-entry-offset",		required_argument,	0,	'e'},
+			{"gpt-disk-size",		required_argument,	0,	'd'},
+			{"gpt-split-images",		no_argument,		0,	'b'},
+			{"part",			required_argument,	0,	'p'},
+			{"mbr-part-type",		required_argument,	0,	't'},
+			{"gpt-part-type",		required_argument,	0,	'T'},
+			{"gpt-part-name",		required_argument,	0,	'N'},
+			{"gpt-part-attr-required",	no_argument,		0,	'r'},
+			{"gpt-part-hybrid",		no_argument,		0,	'H'},
+			{"gpt-part-index",		required_argument,	0,	'i'},
+			{NULL,				0,			0,	 0 },
+		};
+
+		ch = getopt_long(argc, argv, "?h:s:p:a:t:T:o:DvnbHN:gl:rS:G:e:d:i:",
+				 long_options, &option_index);
+		if (ch == -1)
+			break;
+
 		switch (ch) {
 		case 'o':
 			filename = optarg;
