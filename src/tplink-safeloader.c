@@ -1026,7 +1026,7 @@ static struct device_info boards[] = {
 			"{product_name:Archer AX20,product_ver:4.6,special_id:55530000}\n"
 			"{product_name:Archer AX21,product_ver:4.6,special_id:55530000}\n",
 		.part_trail = 0x00,
-		.soft_ver = SOFT_VER_TEXT("1.0.5\n"),
+		.soft_ver = SOFT_VER_TEXT("soft_ver:1.1.0\n"),
 
 		.partitions = {
 			{"fs-uboot", 0x00000, 0x40000},
