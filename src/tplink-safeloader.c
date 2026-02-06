@@ -4332,7 +4332,7 @@ static struct flash_partition_entry *find_partition(
 		const char *name, const char *error_msg)
 {
 	for (size_t i = 0; i < max_entries; i++, entries++) {
-		if (strcmp(entries->name, name) == 0)
+		if (entries->name && strcmp(entries->name, name) == 0)
 			return entries;
 	}
 
