@@ -129,6 +129,7 @@ struct partinfo {
 	int hybrid;
 	char *name;
 	short int required;
+	short int bootable;
 	bool has_guid;
 	guid_t guid;
 	uint64_t gattr;  /* GPT partition attributes */
@@ -480,7 +481,7 @@ static int gen_gptable(uint32_t signature, guid_t guid, unsigned nr)
 		if (parts[i].name)
 			init_utf16(parts[i].name, (uint16_t *)gpte[index].name, GPT_ENTRY_NAME_SIZE / sizeof(uint16_t));
 
-		if ((i + 1) == (unsigned)active)
+		if ((i + 1) == (unsigned)active || parts[i].bootable)
 			gpte[index].attr |= GPT_ATTR_LEGACY_BOOT;
 
 		if (parts[i].required)
@@ -651,6 +652,7 @@ static void usage(char *prog)
 			"  -T, --gpt-part-type=TYPE_NAME   defines partinion type by GPT type name\n"
 			"  -N, --gpt-part-name=NAME        defines GPT partition name\n"
 			"  -r, --gpt-part-attr-required    mark partition with GPT required attribute\n"
+			"  -B, --gpt-part-attr-bootable    mark partition with GPT bootable attribute\n"
 			"  -H, --gpt-part-hybrid           put GPT partition to the MBR as well\n"
 			"  -i, --gpt-part-index=INDEX      use custom INDEX for the partition in the GPT Entry Table\n",
 			prog);
@@ -687,7 +689,7 @@ int main (int argc, char **argv)
 	int part = 0;
 	unsigned part_index = 0;
 	char *name = NULL;
-	unsigned short int hybrid = 0, required = 0;
+	unsigned short int hybrid = 0, required = 0, bootable = 0;
 	uint64_t total_sectors;
 	uint32_t signature = 0x5452574F; /* 'OWRT' */
 	guid_t guid = GUID_INIT( signature, 0x2211, 0x4433, \
@@ -716,12 +718,13 @@ int main (int argc, char **argv)
 			{"gpt-part-type",		required_argument,	0,	'T'},
 			{"gpt-part-name",		required_argument,	0,	'N'},
 			{"gpt-part-attr-required",	no_argument,		0,	'r'},
+			{"gpt-part-attr-bootable",	no_argument,		0,	'B'},
 			{"gpt-part-hybrid",		no_argument,		0,	'H'},
 			{"gpt-part-index",		required_argument,	0,	'i'},
 			{NULL,				0,			0,	 0 },
 		};
 
-		ch = getopt_long(argc, argv, "?h:s:p:a:t:T:o:DvnbHN:gl:rS:G:e:d:i:",
+		ch = getopt_long(argc, argv, "?h:s:p:a:t:T:o:DvnbHN:gl:rBS:G:e:d:i:",
 				 long_options, &option_index);
 		if (ch == -1)
 			break;
@@ -802,6 +805,7 @@ int main (int argc, char **argv)
 
 			parts[part].size = to_kbytes(optarg);
 			parts[part].required = required;
+			parts[part].bootable = bootable;
 			parts[part].name = name;
 			parts[part].hybrid = hybrid;
 			parts[part].part_index = part_index;
@@ -813,6 +817,7 @@ int main (int argc, char **argv)
 			 */
 			name = NULL;
 			required = 0;
+			bootable = 0;
 			hybrid = 0;
 
 			/* mark index as used, switch to next index */
@@ -861,6 +866,9 @@ int main (int argc, char **argv)
 				fputs("Invalid guid string\n", stderr);
 				exit(EXIT_FAILURE);
 			}
+			break;
+		case 'B':
+			bootable = 1;
 			break;
 		case '?':
 		default:
