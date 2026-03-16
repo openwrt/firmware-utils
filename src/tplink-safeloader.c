@@ -2219,7 +2219,8 @@ static struct device_info boards[] = {
 			"EAP610(TP-Link|JP|AX1800-D):3.0\r\n"
 			"EAP610(TP-Link|EG|AX1800-D):3.0\r\n"
 			"EAP610(TP-Link|CA|AX1800-D):3.0\r\n"
-			"EAP613(TP-Link|UN|AX1800-D):1.0 JP\r\n",
+			"EAP613(TP-Link|UN|AX1800-D):1.0 JP\r\n"
+			"Festa F61(TP-Link|UN|AX1800-D):1.0\r\n",
 		.part_trail = PART_TRAIL_NONE,
 
 		.partitions = {
