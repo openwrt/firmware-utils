@@ -118,9 +118,9 @@ int num_blocks = 0;
 #define AR71XX_FLASH_BASE	0xBFC00000
 #define AR71XX_CODE_START	0x81E00000
 
-#define RTL93XX_FLASH_BASE	0xB4000000
-#define RTL93XX_CODE_START	0x80220000
-#define RTL93XX_BOOTEXT_SIZE	0x10000
+#define RTL_OTTO_FLASH_BASE	0xB4000000
+#define RTL_OTTO_CODE_START	0x80220000
+#define RTL_OTTO_BOOTEXT_SIZE	0x10000
 
 #define BOARD(n, d, v, m, fb, fs, cs, fo) {		\
 	.name = (n), .desc=(d),				\
@@ -150,12 +150,12 @@ int num_blocks = 0;
 	.bootext_size = 0x30000		\
 	}
 
-#define RTL93XXBOARD(n, d, m, fs, fo) {					\
+#define RTL_OTTO_BOARD(n, d, m, fs, fo) {				\
 	.name = (n), .desc = (d),					\
 	.vendor = (ZYNOS_VENDOR_ID_ZYXEL), .model = (m),		\
-	.flash_base = (RTL93XX_FLASH_BASE), .flash_size = (fs)<<20,	\
-	.code_start = (RTL93XX_CODE_START), .romio_offs = (fo),		\
-	.bootext_size = (RTL93XX_BOOTEXT_SIZE)				\
+	.flash_base = (RTL_OTTO_FLASH_BASE), .flash_size = (fs)<<20,	\
+	.code_start = (RTL_OTTO_CODE_START), .romio_offs = (fo),	\
+	.bootext_size = (RTL_OTTO_BOOTEXT_SIZE)				\
 	}
 
 static struct board_info boards[] = {
@@ -238,20 +238,20 @@ static struct board_info boards[] = {
 	AR71XXBOARD1("NBG-460N", "ZyXEL NBG-460N", ZYNOS_MODEL_NBG_460N, 4),
 
 	/*
-	 * Realtek RTL93xx based boards
+	 * Realtek Otto based boards
 	 */
-	RTL93XXBOARD("XGS1930-28", "Zyxel XGS1930-28", MID(24834), 32, 0x260000),	/* ABHT */
-	RTL93XXBOARD("XGS1930-28HP", "Zyxel XGS1930-28HP", MID(25090), 32, 0x260000),	/* ABHS */
-	RTL93XXBOARD("XGS1930-52", "Zyxel XGS1930-52", MID(25346), 32, 0x260000),	/* ABHU */
-	RTL93XXBOARD("XGS1930-52HP", "Zyxel XGS1930-52HP", MID(25602), 32, 0x260000),	/* ABHV */
-	RTL93XXBOARD("XMG1915-10E", "Zyxel XMG1915-10E", MID(37378), 32, 0x260000),	/* ACGO */
-	RTL93XXBOARD("XMG1915-10EP", "Zyxel XMG1915-10EP", MID(37634), 32, 0x260000),	/* ACGP */
-	RTL93XXBOARD("XMG1915-18EP", "Zyxel XMG1915-18EP", MID(37890), 32, 0x260000),	/* ACGQ */
-	RTL93XXBOARD("XMG1930-30", "Zyxel XMG1930-30", MID(33794), 32, 0x280000),	/* ACAR */
-	RTL93XXBOARD("XMG1930-30HP", "Zyxel XMG1930-30HP", MID(34050), 32, 0x280000),	/* ACAS */
-	RTL93XXBOARD("XS1930-10", "Zyxel XS1930-10", MID(29698), 32, 0x280000),		/* ABQE */
-	RTL93XXBOARD("XS1930-12F", "Zyxel XS1930-12F", MID(33026), 32, 0x280000),	/* ABZV */
-	RTL93XXBOARD("XS1930-12HP", "Zyxel XS1930-12HP", MID(29954), 32, 0x280000),	/* ABQF */
+	RTL_OTTO_BOARD("XGS1930-28", "Zyxel XGS1930-28", MID(24834), 32, 0x260000),	/* ABHT */
+	RTL_OTTO_BOARD("XGS1930-28HP", "Zyxel XGS1930-28HP", MID(25090), 32, 0x260000),	/* ABHS */
+	RTL_OTTO_BOARD("XGS1930-52", "Zyxel XGS1930-52", MID(25346), 32, 0x260000),	/* ABHU */
+	RTL_OTTO_BOARD("XGS1930-52HP", "Zyxel XGS1930-52HP", MID(25602), 32, 0x260000),	/* ABHV */
+	RTL_OTTO_BOARD("XMG1915-10E", "Zyxel XMG1915-10E", MID(37378), 32, 0x260000),	/* ACGO */
+	RTL_OTTO_BOARD("XMG1915-10EP", "Zyxel XMG1915-10EP", MID(37634), 32, 0x260000),	/* ACGP */
+	RTL_OTTO_BOARD("XMG1915-18EP", "Zyxel XMG1915-18EP", MID(37890), 32, 0x260000),	/* ACGQ */
+	RTL_OTTO_BOARD("XMG1930-30", "Zyxel XMG1930-30", MID(33794), 32, 0x280000),	/* ACAR */
+	RTL_OTTO_BOARD("XMG1930-30HP", "Zyxel XMG1930-30HP", MID(34050), 32, 0x280000),	/* ACAS */
+	RTL_OTTO_BOARD("XS1930-10", "Zyxel XS1930-10", MID(29698), 32, 0x280000),	/* ABQE */
+	RTL_OTTO_BOARD("XS1930-12F", "Zyxel XS1930-12F", MID(33026), 32, 0x280000),	/* ABZV */
+	RTL_OTTO_BOARD("XS1930-12HP", "Zyxel XS1930-12HP", MID(29954), 32, 0x280000),	/* ABQF */
 
 	{.name = NULL}
 };
