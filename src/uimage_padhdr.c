@@ -43,12 +43,178 @@ typedef struct image_header {
 /* default padding size */
 #define	IH_PAD_BYTES		(32)
 
+/* maximum number of -x / -s patch entries */
+#define MAX_PATCHES		64
+
+typedef struct {
+	size_t		offset;	/* byte offset within the padding area */
+	uint8_t		*data;
+	size_t		len;
+} patch_entry_t;
+
+static patch_entry_t patches[MAX_PATCHES];
+static int num_patches = 0;
+
+static void free_patches(void)
+{
+	int i;
+
+	for (i = 0; i < num_patches; i++) {
+		free(patches[i].data);
+		patches[i].data = NULL;
+	}
+	num_patches = 0;
+}
+
+/*
+ * Helper to add a validated patch entry.
+ * Takes ownership of `data` on success.
+ */
+static int add_patch(size_t offset, uint8_t *data, size_t len)
+{
+	if (num_patches >= MAX_PATCHES) {
+		fprintf(stderr, "Too many patch entries (max %d)\n", MAX_PATCHES);
+		free(data);
+		return -1;
+	}
+
+	patches[num_patches].offset = offset;
+	patches[num_patches].data   = data;
+	patches[num_patches].len    = len;
+	num_patches++;
+	return 0;
+}
+
+/*
+ * Parse offset from argument prefix.
+ * Returns pointer to the start of the payload data, or NULL on error.
+ */
+static const char *
+parse_offset(const char *arg, const char *opt_name, size_t *offset_out)
+{
+	const char *colon;
+	long offset;
+	char *endptr;
+
+	colon = strchr(arg, ':');
+	if (!colon) {
+		fprintf(stderr, "Invalid %s argument (expected offset:value): %s\n", opt_name, arg);
+		return NULL;
+	}
+
+	errno = 0;
+	offset = strtol(arg, &endptr, 0);
+	if (errno || endptr == arg || endptr != colon || offset < 0) {
+		fprintf(stderr, "Invalid offset in %s argument: %s\n", opt_name, arg);
+		return NULL;
+	}
+
+	*offset_out = (size_t)offset;
+	return colon + 1;
+}
+
+static int hex_to_nibble(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+/*
+ * Parse "offset:hexstring" and add patch.
+ */
+static int
+add_hex_patch(const char *arg)
+{
+	const char *hexstr;
+	size_t offset;
+	size_t hexlen;
+	uint8_t *data;
+	size_t i;
+
+	hexstr = parse_offset(arg, "-x", &offset);
+	if (!hexstr)
+		return -1;
+
+	hexlen = strlen(hexstr);
+	if (hexlen == 0 || hexlen % 2 != 0) {
+		fprintf(stderr, "Hex string must have even number of digits: %s\n", hexstr);
+		return -1;
+	}
+
+	data = malloc(hexlen / 2);
+	if (!data) {
+		fprintf(stderr, "Memory allocation failed\n");
+		return -1;
+	}
+
+	for (i = 0; i < hexlen / 2; i++) {
+		int high = hex_to_nibble(hexstr[2 * i]);
+		int low = hex_to_nibble(hexstr[2 * i + 1]);
+
+		if (high < 0 || low < 0) {
+			fprintf(stderr, "Invalid hex byte at position %zu: %.2s\n",
+				i, hexstr + 2 * i);
+			free(data);
+			return -1;
+		}
+		data[i] = (uint8_t)((high << 4) | low);
+	}
+
+	return add_patch(offset, data, hexlen / 2);
+}
+
+/*
+ * Parse "offset:string" and add patch.
+ */
+static int
+add_str_patch(const char *arg)
+{
+	const char *str;
+	size_t offset;
+	size_t slen;
+	uint8_t *data;
+
+	str = parse_offset(arg, "-s", &offset);
+	if (!str)
+		return -1;
+
+	slen = strlen(str);
+	if (slen == 0) {
+		fprintf(stderr, "Empty string in -s argument: %s\n", arg);
+		return -1;
+	}
+
+	data = malloc(slen);
+	if (!data) {
+		fprintf(stderr, "Memory allocation failed\n");
+		return -1;
+	}
+	memcpy(data, str, slen);
+
+	return add_patch(offset, data, slen);
+}
 
 static void usage(char *prog)
 {
 	fprintf(stderr,
-		"%s -i <input_uimage_file> -o <output_file> [-l <padding bytes>]\n",
-		prog);
+		"%s -i <input_uimage_file> -o <output_file> [-l <padding bytes>]\n"
+		"   [-x offset:hexstring] [-s offset:string]\n"
+		"\n"
+		"  -l <bytes>         Total padding size appended after the uImage header\n"
+		"                     (default: %d bytes, zero-filled)\n"
+		"  -x offset:hexstr   Write hex bytes at <offset> within the padding\n"
+		"                     (can be repeated; hex digits must be even count)\n"
+		"  -s offset:string   Write ASCII string at <offset> within the padding\n"
+		"                     (can be repeated; string is NOT NUL-terminated)\n"
+		"\n"
+		"Offsets are relative to the start of the padding area.\n"
+		"Patches are validated so they do not exceed the padding size.\n",
+		prog, IH_PAD_BYTES);
 }
 
 int main(int argc, char *argv[])
@@ -65,9 +231,10 @@ int main(int argc, char *argv[])
 	char *outfname = NULL;
 	int padsz = IH_PAD_BYTES;
 	int ltmp;
+	int i;
 	int ret = 1;
 
-	while ((opt = getopt(argc, argv, "i:o:l:")) != -1) {
+	while ((opt = getopt(argc, argv, "i:o:l:x:s:")) != -1) {
 		switch (opt) {
 		case 'i':
 			infname = optarg;
@@ -80,6 +247,14 @@ int main(int argc, char *argv[])
 			if (ltmp > 0)
 				padsz = ltmp;
 			break;
+		case 'x':
+			if (add_hex_patch(optarg) < 0)
+				goto out;
+			break;
+		case 's':
+			if (add_str_patch(optarg) < 0)
+				goto out;
+			break;
 		default:
 			break;
 		}
@@ -88,6 +263,21 @@ int main(int argc, char *argv[])
 	if (!infname || !outfname) {
 		usage(argv[0]);
 		goto out;
+	}
+
+	/* Validate all patches fit inside the padding area (with overflow protection) */
+	for (i = 0; i < num_patches; i++) {
+		if (patches[i].offset > (size_t)padsz ||
+		    patches[i].len > (size_t)padsz - patches[i].offset) {
+			fprintf(stderr,
+				"Patch %d (offset=%zu len=%zu) overflows "
+				"padding size %d\n",
+				i,
+				patches[i].offset,
+				patches[i].len,
+				padsz);
+			goto out;
+		}
 	}
 
 	ifd = open(infname, O_RDONLY);
@@ -125,6 +315,13 @@ int main(int argc, char *argv[])
 
 	memset(&(filebuf[sizeof(*imgh)]), 0, padsz);
 
+	/* Apply patches into the padding area (before checksum) */
+	for (i = 0; i < num_patches; i++) {
+		memcpy(&filebuf[sizeof(*imgh) + patches[i].offset],
+		       patches[i].data,
+		       patches[i].len);
+	}
+
 	rsz = read(ifd, &(filebuf[sizeof(*imgh) + padsz]),
 				statbuf.st_size - sizeof(*imgh));
 	if (rsz != (int32_t)(statbuf.st_size - sizeof(*imgh))) {
@@ -153,6 +350,7 @@ out:
 		close(ifd);
 	if (ofd >= 0)
 		close(ofd);
+	free_patches();
 	free(filebuf);
 
 	return ret;
