@@ -54,9 +54,9 @@ static void usage(char *prog)
 int main(int argc, char *argv[])
 {
 	struct stat statbuf;
-	u_int8_t *filebuf;
-	int ifd;
-	int ofd;
+	u_int8_t *filebuf = NULL;
+	int ifd = -1;
+	int ofd = -1;
 	ssize_t rsz;
 	u_int32_t crc_recalc;
 	image_header_t *imgh;
@@ -65,6 +65,7 @@ int main(int argc, char *argv[])
 	char *outfname = NULL;
 	int padsz = IH_PAD_BYTES;
 	int ltmp;
+	int ret = 1;
 
 	while ((opt = getopt(argc, argv, "i:o:l:")) != -1) {
 		switch (opt) {
@@ -86,40 +87,40 @@ int main(int argc, char *argv[])
 
 	if (!infname || !outfname) {
 		usage(argv[0]);
-		exit(1);
+		goto out;
 	}
 
 	ifd = open(infname, O_RDONLY);
 	if (ifd < 0) {
 		fprintf(stderr,
 			"could not open input file. (errno = %d)\n", errno);
-		exit(1);
+		goto out;
 	}
 
 	ofd = open(outfname, O_WRONLY | O_CREAT, 0644);
 	if (ofd < 0) {
 		fprintf(stderr,
 			"could not open output file. (errno = %d)\n", errno);
-		exit(1);
+		goto out;
 	}
 
 	if (fstat(ifd, &statbuf) < 0) {
 		fprintf(stderr,
 			"could not fstat input file. (errno = %d)\n", errno);
-		exit(1);
+		goto out;
 	}
 
 	filebuf = malloc(statbuf.st_size + padsz);
 	if (!filebuf) {
 		fprintf(stderr, "buffer allocation failed\n");
-		exit(1);
+		goto out;
 	}
 
 	rsz = read(ifd, filebuf, sizeof(*imgh));
 	if (rsz != sizeof(*imgh)) {
 		fprintf(stderr,
 			"could not read input file (errno = %d).\n", errno);
-		exit(1);
+		goto out;
 	}
 
 	memset(&(filebuf[sizeof(*imgh)]), 0, padsz);
@@ -129,7 +130,7 @@ int main(int argc, char *argv[])
 	if (rsz != (int32_t)(statbuf.st_size - sizeof(*imgh))) {
 		fprintf(stderr,
 			"could not read input file (errno = %d).\n", errno);
-		exit(1);
+		goto out;
 	}
 
 	imgh = (image_header_t *)filebuf;
@@ -142,8 +143,17 @@ int main(int argc, char *argv[])
 	if (rsz != (int32_t)statbuf.st_size + padsz) {
 		fprintf(stderr,
 			"could not write output file (errnor = %d).\n", errno);
-		exit(1);
+		goto out;
 	}
 
-	return 0;
+	ret = 0;
+
+out:
+	if (ifd >= 0)
+		close(ifd);
+	if (ofd >= 0)
+		close(ofd);
+	free(filebuf);
+
+	return ret;
 }
