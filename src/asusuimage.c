@@ -455,7 +455,7 @@ static int show_info(char *img, size_t img_size)
 		buf_size = sizeof(trx2_t) - offsetof(trx2_t, unk);
 		for (size_t i = 0; i < buf_size; i += 2) {
 			if (buf[i] == FS_OFFSET_PREFIX) {
-				xx = GET_BE24(buf + 1);
+				xx = GET_BE24(buf + i + 1);
 				if ((xx & 3) == 0) {
 					fs_offset = xx;
 					break;
