@@ -8,6 +8,11 @@
 #include <sys/types.h>
 #include <string.h>
 #include <unistd.h>
+#if defined(__linux__)
+#include <endian.h>
+#else
+#include <sys/endian.h>
+#endif
 
 #define szbuf 32768
 
@@ -132,7 +137,15 @@ int main(int argc, char *argv[]) {
     }
 
     fseek(f, 0, SEEK_SET);
-    sign.crc32 = chksum_crc32(f);
+    /*
+     * On-disk fields are little-endian, matching every existing
+     * ZYIMAGE_ID value in the OpenWrt tree (unlike the vendor tool,
+     * which writes device_id big-endian). E.g. ZYIMAGE_ID 0x804410 and
+     * the vendor's CONFIG_TARGET_DEVICE_ID="0x10448000" are the same
+     * four bytes in opposite order.
+     */
+    sign.device_id = htole32(sign.device_id);
+    sign.crc32 = htole32(chksum_crc32(f));
     fwrite(&sign, sizeof(sign), 1, f);
     fclose(f);
 
