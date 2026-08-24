@@ -523,10 +523,8 @@ int main(int argc, char *argv[])
 	}
 
 	if ((header.firmware_type == 0) &&
-	    (cw_header.datecode == DATECODE_NONE)) {
-		fprintf(stderr, "Firmware type must be non-zero for non-capwap images\n");
-		usage(progname, EXIT_FAILURE);
-	}
+	    (cw_header.datecode == DATECODE_NONE))
+		fprintf(stderr, "Warning: firmware type 0 with no capwap header; building a plain image\n");
 
 	if (header.vendor_id == 0 || header.product_id == 0) {
 		fprintf(stderr,	"Vendor ID and Product ID must be defined and non-zero\n");
