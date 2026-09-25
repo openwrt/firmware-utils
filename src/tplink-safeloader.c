@@ -125,6 +125,7 @@ struct __attribute__((__packed__)) soft_version {
 	uint8_t day;
 	uint32_t rev;
 	uint32_t compat_level;
+	uint32_t secure_ver;
 };
 
 /*
@@ -2251,7 +2252,10 @@ static struct device_info boards[] = {
 			"SupportList:\r\n"
 			"EAP615-Wall(TP-Link|UN|AX1800-D):1.0\r\n"
 			"EAP615-Wall(TP-Link|CA|AX1800-D):1.0\r\n"
-			"EAP615-Wall(TP-Link|JP|AX1800-D):1.0\r\n",
+			"EAP615-Wall(TP-Link|JP|AX1800-D):1.0\r\n"
+			"EAP615-Wall(TP-Link|UN|AX1800-D):1.20\r\n"
+			"EAP615-Wall(TP-Link|CA|AX1800-D):1.20\r\n"
+			"EAP615-Wall(TP-Link|JP|AX1800-D):1.20\r\n",
 		.part_trail = PART_TRAIL_NONE,
 
 		.partitions = {
@@ -3651,7 +3655,8 @@ static struct image_partition_entry make_soft_version(const struct device_info *
 		.day = bcd(tm->tm_mday),
 		.rev = htonl(rev),
 
-		.compat_level = htonl(info->soft_ver_compat_level)
+		.compat_level = htonl(info->soft_ver_compat_level),
+		.secure_ver = 0
 	};
 
 	if (info->soft_ver_compat_level == 0)
