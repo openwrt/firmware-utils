@@ -179,6 +179,7 @@ void image_encrypt(void)
 	fwrite(&sigret[0], 1, RSA_KEY_LENGTH_BYTES, output_file);
 
 	// sign md_before
+	siglen = sizeof(sigret);
 	EVP_PKEY_sign(rsa_ctx, &sigret[0], &siglen, &md_before[0], SHA512_DIGEST_LENGTH);
 	printf("\nsigned before:\n");
 	for (i = 0; i < RSA_KEY_LENGTH_BYTES; i++)
@@ -186,6 +187,7 @@ void image_encrypt(void)
 	fwrite(&sigret[0], 1, RSA_KEY_LENGTH_BYTES, output_file);
 
 	// sign md_post
+	siglen = sizeof(sigret);
 	EVP_PKEY_sign(rsa_ctx, &sigret[0], &siglen, &md_post[0], SHA512_DIGEST_LENGTH);
 	printf("\nsigned post:\n");
 	for (i = 0; i < RSA_KEY_LENGTH_BYTES; i++)
