@@ -104,17 +104,20 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 /* defaulting to 10 ms interpacket delay */
 static int pktdelay = 10000;
 static int sockfd = -1;
 static bool exiting;
+static bool verbose;
 
 /* All integers are stored in network order (big endian) */
 struct zycast_t {
@@ -158,6 +161,27 @@ static void errexit(const char *msg)
 	exit(EXIT_FAILURE);
 }
 
+static void pr_verbose(const char *fmt, ...)
+{
+	va_list ap;
+	time_t t;
+	struct tm *tm;
+	char ts[32];
+
+	if (!verbose)
+		return;
+
+	t = time(NULL);
+	tm = localtime(&t);
+	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm);
+
+	printf("[%s] ", ts);
+
+	va_start(ap, fmt);
+	vfprintf(stdout, fmt, ap);
+	va_end(ap);
+}
+
 static void *map_input(const char *name, size_t *len)
 {
 	struct stat stat;
@@ -172,6 +196,7 @@ static void *map_input(const char *name, size_t *len)
 		return NULL;
 	}
 	*len = stat.st_size;
+	pr_verbose("mapping '%s' (len=%zu)\n", name, *len);
 	mapped = mmap(NULL, stat.st_size, PROT_READ, MAP_SHARED, fd, 0);
 	if (close(fd) < 0) {
 		(void) munmap(mapped, stat.st_size);
@@ -203,9 +228,9 @@ static int pushimage(void *file, struct zycast_t *phdr)
 		phdr->pid = htonl(count++);
 		phdr->chksum = htons(chksum(file, plen));
 		if (send(sockfd, phdr, HDRSIZE, MSG_MORE | MSG_DONTROUTE) < 0)
-			errexit("send(phdr)");
+		    errexit("send(phdr)");
 		if (send(sockfd, file, plen, MSG_DONTROUTE) < 0)
-			errexit("send(payload)");
+		    errexit("send(payload)");
 		file += plen;
 		len -= plen;
 
@@ -229,6 +254,7 @@ static void usage(const char *name)
 	fprintf(stderr, " %s [options]\n", name);
 	fprintf(stderr, "Options:\n");
 	fprintf(stderr, "\t-i interface            outgoing interface for multicast packets\n");
+	fprintf(stderr, "\t-v                      verbose output\n");
 	fprintf(stderr, "\t-t delay                interpacket delay in milliseconds\n");
 	fprintf(stderr, "\t-f rasimage             primary firmware image\n");
 	fprintf(stderr, "\t-b backupimage          secondary firmware image (if supported)\n");
@@ -279,9 +305,13 @@ int main(int argc, char **argv)
 	if (connect(sockfd, (struct sockaddr *)&dest, sizeof(dest)) < 0)
 		errexit("connect()");
 
-	while ((c = getopt(argc, argv, "i:t:f:b:d:r:u:")) != -1) {
+	while ((c = getopt(argc, argv, "vi:t:f:b:d:r:u:")) != -1) {
 		switch (c) {
+		case 'v':
+			verbose = true;
+			break;
 		case 'i':
+			pr_verbose("binding to interface '%s'\n", optarg);
 			if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE,  optarg, strlen(optarg)) < 0)
 				errexit(optarg);
 			break;
@@ -290,6 +320,7 @@ int main(int argc, char **argv)
 			if (i < 1)
 				i = 1;
 			pktdelay = i * 1000;
+			pr_verbose("setting interpacket delay to %d ms\n", i);
 			break;
 		case 'f':
 			ADD_IMAGE(RAS);
@@ -322,7 +353,9 @@ int main(int argc, char **argv)
 			if (hdr.images & BIT(i)) {
 				hdr.type = BIT(i);
 				hdr.flen = htonl(len[i]);
+				pr_verbose("starting broadcast of image type 0x%02x (len=%zu)\n", hdr.type, len[i]);
 				pushimage(file[i], &hdr);
+				pr_verbose("finished broadcast of image type 0x%02x\n", hdr.type);
 			}
 		}
 	};
