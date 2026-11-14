@@ -1739,8 +1739,8 @@ static struct device_info boards[] = {
 
 		.partitions = {
 			{"fs-uboot", 0x00000, 0x40000},
-			{"os-image", 0x40000, 0x200000},
-			{"file-system", 0x240000, 0xc00000},
+			{"os-image", 0x40000, 0x400000},
+			{"file-system", 0x440000, 0xa00000},
 			{"default-mac", 0xe40000, 0x00200},
 			{"pin", 0xe40200, 0x00200},
 			{"product-info", 0xe40400, 0x00200},
