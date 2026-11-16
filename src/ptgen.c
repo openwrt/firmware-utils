@@ -67,6 +67,10 @@ typedef struct {
 	GUID_INIT( 0xEBD0A0A2, 0xB9E5, 0x4433, \
 			0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7)
 
+#define GUID_PARTITION_FREEDESKTOP_BOOT \
+	GUID_INIT( 0xBC13C2FF, 0x59E6, 0x4262, \
+			0xA3, 0x52, 0xB2, 0x75, 0xFD, 0x6F, 0x71, 0x72)
+
 #define GUID_PARTITION_BIOS_BOOT \
 	GUID_INIT( 0x21686148, 0x6449, 0x6E6F, \
 			0x74, 0x4E, 0x65, 0x65, 0x64, 0x45, 0x46, 0x49)
@@ -669,6 +673,9 @@ static guid_t type_to_guid_and_name(unsigned char type, char **name)
 			if(*name == NULL)
 				*name = "EFI System Partition";
 			guid = GUID_PARTITION_SYSTEM;
+			break;
+		case 0xea:
+			guid = GUID_PARTITION_FREEDESKTOP_BOOT;
 			break;
 		case 0x83:
 			guid = GUID_PARTITION_LINUX_FS_GUID;
