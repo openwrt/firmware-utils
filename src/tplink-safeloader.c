@@ -2426,6 +2426,45 @@ static struct device_info boards[] = {
 		.last_sysupgrade_partition = "file-system"
 	},
 
+	/** Firmware layout for the TL-WPA7510 v2 */
+	{
+		.id     = "TL-WPA7510-V2",
+		.vendor = "",
+		.support_list =
+			"SupportList:\n"
+			"{product_name:TL-WPA7510,product_ver:2.0.0,special_id:45550000}\n",
+		.part_trail = 0x00,
+		.soft_ver = SOFT_VER_DEFAULT,
+
+		.partitions = {
+			{"factory-uboot", 0x00000, 0x30000},
+			{"fs-uboot", 0x30000, 0x30000},
+			{"firmware", 0x60000, 0x5d0000},
+			{"extra-para", 0x630000, 0x01000},
+			{"product-info", 0x640000, 0x01000},
+			{"partition-table", 0x650000, 0x02000},
+			{"soft-version", 0x660000, 0x01000},
+			{"support-list", 0x661000, 0x01000},
+			{"profile", 0x662000, 0x08000},
+			{"user-config", 0x670000, 0x10000},
+			{"default-config", 0x680000, 0x10000},
+			{"plc-fw", 0x690000, 0x100000},
+			{"plc-bin", 0x790000, 0x20000},
+			{"plc-param", 0x7b0000, 0x10000},
+			{"plc-param-csv", 0x7c0000, 0x10000},
+			{"default-param", 0x7d0000, 0x10000},
+			{"default-mac", 0x7e0100, 0x00020},
+			{"pin", 0x7e0200, 0x00020},
+			{"device-id", 0x7e0300, 0x00030},
+			{"default-region", 0x7e0400, 0x00010},
+			{"radio", 0x7f0000, 0x10000},
+			{NULL, 0, 0}
+		},
+
+		.first_sysupgrade_partition = "os-image",
+		.last_sysupgrade_partition = "file-system"
+	},
+
 	/** Firmware layout for the TL-WPA8630P v2 (EU)*/
 	{
 		.id     = "TL-WPA8630P-V2.0-EU",
