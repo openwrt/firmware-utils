@@ -3969,7 +3969,8 @@ static void build_image(const char *output,
 		if (!sysupgrade)
 			file_system_partition->base = ALIGN(firmware_partition->base + kernel.st_size, 0x10000);
 
-		file_system_partition->size = firmware_partition->size - file_system_partition->base;
+		file_system_partition->size = firmware_partition->base + firmware_partition->size -
+					      file_system_partition->base;
 
 		os_image_partition->name = info->partition_names.os_image;
 
